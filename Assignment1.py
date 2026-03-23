@@ -36,16 +36,22 @@ def NormalizeData(data, mean, std):
     return (data - mean) / std
 
 
+# ---- 1: Load data -------
 
 cifar_dir = './Datasets/cifar-10-batches-py/'
 trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
 validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
-testX, testY, testy = LoadBatch(cifar_dir +  'data_batch_3')
+testX, testY, testy = LoadBatch(cifar_dir +  'test_batch')
 
 #print(trainy[0:10])
 #print(trainY[:, 0:10])
 
 d = trainX.shape[0]
+n = trainX.shape[1]
+K = trainY.shape[0]
+
+# ---- 2: Normalize data -------
+
 mean_X = np.mean(trainX, axis=1).reshape(d, 1)
 std_X = np.std(trainX, axis=1).reshape(d, 1)
 
@@ -54,5 +60,26 @@ validX = NormalizeData(validX, mean_X, std_X)
 testX = NormalizeData(testX, mean_X, std_X)
 
 
+# ---- 3: Initialize parameters -------
+
+# creat random generator object
+rng = np.random.default_rng()
+
+# get the BitGenerator used by default_rng
+BitGen = type(rng.bit_generator)
+# use a seed and save it
+# makes initilization repeatable
+seed = 42
+# use the state from a fresh bit generator
+rng.bit_generator.state = BitGen(seed).state
+
+# network represented by dict to hold parameters: keys 'W', 'b'
+init_net = {}
+# W is (K, d): one weight per class and input feature
+# Initialize W randomly normally distributed
+init_net['W'] = .01*rng.standard_normal(size = (K, d))  # (K, d)
+# b is (K, 1): one bias per class
+# initialize b to zero
+init_net['b'] = np.zeros((K, 1))                        # (K, 1)
 
 
