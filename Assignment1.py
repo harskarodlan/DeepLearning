@@ -39,8 +39,8 @@ def NormalizeData(data, mean, std):
 
 cifar_dir = './Datasets/cifar-10-batches-py/'
 trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
-#validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
-#testX, testY, testy = LoadBatch(cifar_dir +  'data_batch_3')
+validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
+testX, testY, testy = LoadBatch(cifar_dir +  'data_batch_3')
 
 #print(trainy[0:10])
 #print(trainY[:, 0:10])
@@ -49,5 +49,10 @@ d = trainX.shape[0]
 mean_X = np.mean(trainX, axis=1).reshape(d, 1)
 std_X = np.std(trainX, axis=1).reshape(d, 1)
 
-trainX  = NormalizeData(trainX, mean_X, std_X)
+trainX = NormalizeData(trainX, mean_X, std_X)
+validX = NormalizeData(validX, mean_X, std_X)
+testX = NormalizeData(testX, mean_X, std_X)
+
+
+
 
