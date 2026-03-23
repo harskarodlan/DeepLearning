@@ -1,0 +1,11 @@
+# datasets
+Datasets/
+*.tar.gz
+
+# python
+__pycache__/
+*.pyc
+
+# environments
+venv/
+.env
