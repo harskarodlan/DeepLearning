@@ -31,10 +31,53 @@ def LoadBatch(filename):
 def NormalizeData(data, mean, std):
     """
     Normalizes image data
-    data: d x n numpy array
+
+    Args:
+        data: d x n numpy array
     """
     return (data - mean) / std
 
+
+def Softmax(S):
+    """
+    Applies softmax.
+
+    Args:
+        S: scores W * X + b,   (K, n)
+           Each column is s = Wx + b, where x is one image data vector
+    Returns:
+        P: probability for each class for each image, (K, n)
+    """
+    # Shift each score vector s (columns of S) by subtracting max score,
+    # improves numerical stability by preventing overflow
+    S_shift = S - np.max(S, axis=0, keepdims=True)
+
+    S_exp = np.exp(S_shift)  # (K, n)
+    # denumerator is exp(S) with each column summed up (summing all classes scores)
+    denum = np.sum(S_exp, axis = 0, keepdims=True)  # (1, n)
+    P = S_exp / denum  #  broadcasting divides columnwise: (K,n)/(1, n) = (K, n)
+    return P
+
+
+def ApplyNetwork(X, network):
+    """
+
+    Args:
+        X: image data, (d, n)
+        network: network parameters, dict with keys 'W', 'b'
+                 W - (K, d) weights
+                 b - (K, 1) biases
+    Returns:
+        P: probability for each class for each image, (K, n)
+    """
+    W = network['W']
+    b = network['b']
+    n = X.shape[1]
+
+    S = W @ X + b @ np.ones((1, n))
+    P = Softmax(S)
+
+    return P
 
 # ---- 1: Load data -------
 
@@ -82,4 +125,8 @@ init_net['W'] = .01*rng.standard_normal(size = (K, d))  # (K, d)
 # initialize b to zero
 init_net['b'] = np.zeros((K, 1))                        # (K, 1)
 
+# ----- 4: Forward pass -----
 
+P = ApplyNetwork(trainX[:, 0:100], init_net)
+print(P.shape)          # (10, 100)
+print(np.sum(P[:, 0]))  # about 1.0
