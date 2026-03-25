@@ -3,6 +3,17 @@ import pickle
 
 
 def LoadBatch(filename):
+    """
+    Loads data batch.
+
+    Args:
+        filename: path of data batch to be loaded
+    Returns:
+        X: image data, (d, n)
+        Y: one-hot encoded image labels, (K, n)
+        y: integer (int64) image labels, (n, )
+    """
+
     # Load a batch of training data
     with open(filename, 'rb') as fo:
         dict = pickle.load(fo, encoding='bytes')
@@ -61,6 +72,7 @@ def Softmax(S):
 
 def ApplyNetwork(X, network):
     """
+    Forwards pass.
 
     Args:
         X: image data, (d, n)
@@ -74,10 +86,46 @@ def ApplyNetwork(X, network):
     b = network['b']
     n = X.shape[1]
 
-    S = W @ X + b @ np.ones((1, n))
+    S = W @ X + b
     P = Softmax(S)
 
     return P
+
+
+def ComputeLoss(P, y):
+    """
+    Computes cross-entropy loss w/o regularization.
+
+    Args:
+        P: probability for each class for each image, (K, n)
+        y: integer labels, (n, )
+    Returns:
+        L: cross-entropy loss (scalar)
+    """
+    n = P.shape[1]
+    # P[y, np.arange(n)]) extracts probilities for correct class
+    # apply -log
+    # get mean of each -log(py)
+    L = -np.mean(np.log(P[y, np.arange(n)]))
+    return L
+
+
+def ComputeCost(P, y, network, lam):
+    """
+    Computes cost = loss + regularization term.
+
+    Args:
+        P: probability for each class for each image, (K, n)
+        y: integer labels, (n, )
+        network:  network parameters, dict with keys 'W', 'b'
+        lam: regularizataion coefficient lambda
+    Returns:
+        cost = loss + regularization term
+    """
+    loss = ComputeLoss(P, y)
+    reg = lam * np.sum(network['W'] ** 2)
+    return loss + reg
+
 
 # ---- 1: Load data -------
 
@@ -125,8 +173,17 @@ init_net['W'] = .01*rng.standard_normal(size = (K, d))  # (K, d)
 # initialize b to zero
 init_net['b'] = np.zeros((K, 1))                        # (K, 1)
 
+
 # ----- 4: Forward pass -----
 
 P = ApplyNetwork(trainX[:, 0:100], init_net)
-print(P.shape)          # (10, 100)
-print(np.sum(P[:, 0]))  # about 1.0
+#print(P.shape)          # (10, 100)
+#print(np.sum(P[:, 0]))  # about 1.0
+
+
+# ----- 5: Compute loss -----
+
+L = ComputeLoss(P, trainy[0:100])
+#C = ComputeCost(P, trainy[0:100], init_net, 0.5)
+print(L)
+#print(C)
