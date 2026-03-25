@@ -127,6 +127,23 @@ def ComputeCost(P, y, network, lam):
     return loss + reg
 
 
+def ComputeAccuracy(P, y):
+    """
+    Computes accuracy of classifier.
+
+    Args:
+        P: probability for each class for each image, (K, n)
+        y: integer labels, (n, )
+    Returns:
+        acc: accuracy = percentage correctly classified images
+    """
+    # get predicted labels as those with highest probability
+    preds = np.argmax(P, axis=0) # (n, )
+    # get % correct classifications
+    acc = np.mean(preds == y)
+
+    return acc
+
 # ---- 1: Load data -------
 
 cifar_dir = './Datasets/cifar-10-batches-py/'
@@ -187,3 +204,9 @@ L = ComputeLoss(P, trainy[0:100])
 #C = ComputeCost(P, trainy[0:100], init_net, 0.5)
 print(L)
 #print(C)
+
+
+# ----- 6: Compute accuracy -----
+
+acc = ComputeAccuracy(P, trainy[0:100])
+#print(acc)
