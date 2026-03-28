@@ -5,6 +5,7 @@ def ComputeGradsWithTorch(X, y, network_params, lam):
 
     # torch requires arrays to be torch tensors
     Xt = torch.from_numpy(X)
+    Xt = Xt.to(torch.float64)
 
     # will be computing the gradient w.r.t. these parameters
     W = torch.tensor(network_params['W'], requires_grad=True)

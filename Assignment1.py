@@ -1,6 +1,9 @@
 import numpy as np
 import pickle
+import copy
+
 from torch_gradient_computations import ComputeGradsWithTorch
+
 
 def LoadBatch(filename):
     """
@@ -21,7 +24,7 @@ def LoadBatch(filename):
     # Extract the image data and cast to float from the dict dictionary
     # n = num images, d = image data dimension = 32*32*3
     # normalize to rgb values to range [0,1]
-    X = dict[b'data'].astype(np.float64) / 255.0    # n x d = (10000, 3072)
+    X = dict[b'data'].astype(np.float32) / 255.0    # n x d = (10000, 3072)
     X = X.transpose()                               # d x n = (3072, 10000)
     #print(X.shape)
 
@@ -33,7 +36,7 @@ def LoadBatch(filename):
     # Extract one-hot encoded image labels
     K = 10              # num of labels
     n = X.shape[1]      # num of images
-    Y = np.zeros((K, n), dtype=X.dtype)     # (K, n) = (10, 10000), float64
+    Y = np.zeros((K, n), dtype=X.dtype)     # (K, n) = (10, 10000), float32
     # arange(n) = [0, 1, ..., n-1]
     Y[y, np.arange(n)] = 1      # for each column i, set row y[i] to 1
 
@@ -188,6 +191,87 @@ def BackwardPass(X, Y, P, network, lam):
     return grads
 
 
+def MiniBatchGD(X, Y, y, GDparams, init_net, lam, rng=None):
+    """
+    Performs mini-batch gradient descent to train network parameters.
+
+    Args:
+        X: image data, (d, n)
+        Y: one-hot encoded image labels, (K, n)
+        y: integer (int64) image labels, (n, )
+        GDparams: dict of GD parameter values, keys 
+                  'n_batch' - num of mini batches
+                  'eta' - training rate
+                  'n_epochs' - num of epochs
+        init_net: dict of initial network parameters, keys 
+                  'W' - (K, d) weights
+                  'b' - (K, 1) biases
+        lam: regularization coefficient lambda
+        rng: random generator for shuffling
+    Returns:
+        trained_net: dict of trained network parameters, keys
+                     'W' - (K, d) weights
+                     'b' - (K, 1) biases
+        history: dict of performance statistics for each epoch, keys
+                 'train_loss' - loss after each epoch
+                 'train_cost' - cost after each epoch
+                 'train_acc' - accuracy after each epoch
+    """
+    trained_net = copy.deepcopy(init_net)
+
+    n_batch = GDparams['n_batch']
+    eta = GDparams['eta']
+    n_epochs = GDparams['n_epochs']
+
+    n = X.shape[1]
+
+    history = {'train_loss': [], 'train_cost': [], 'train_acc': []}
+
+    # 1 epoch = 1 run through entire dataset
+    for epoch in range(n_epochs):
+        # shuffle dataset before each epoch
+        if rng is not None:
+            perm = rng.permutation(n)
+            X_epoch = X[:, perm]
+            Y_epoch = Y[:, perm]
+
+        for j in range(n//n_batch): # go through mini-batches
+            # mini batch indices
+            j_start = j*n_batch
+            j_end = (j+1)*n_batch
+
+            # mini batch
+            X_batch = X_epoch[:, j_start:j_end]
+            Y_batch = Y_epoch[:, j_start:j_end]
+            
+            # apply mini batch
+            P_batch = ApplyNetwork(X_batch, trained_net)
+            # backprop mini batch
+            grads = BackwardPass(X_batch, Y_batch, P_batch, trained_net, lam)
+
+            # update parameters using GD with mini batch
+            trained_net['W'] -= eta*grads['W']
+            trained_net['b'] -= eta*grads['b']
+
+        # evaluate trained net after each epoch
+        P_epoch = ApplyNetwork(X, trained_net)
+
+        train_loss = ComputeLoss(P_epoch, y)
+        train_cost = ComputeCost(P_epoch, y, trained_net, lam)
+        train_acc = ComputeAccuracy(P_epoch, y)
+
+        history['train_loss'].append(train_loss)
+        history['train_cost'].append(train_cost)
+        history['train_acc'].append(train_acc)
+
+
+        print(f"epoch {epoch+1}/{n_epochs}: "
+              f"train loss = {train_loss:.6f}, "
+              f"train cost = {train_cost:.6f}, "
+              f"train acc = {train_acc:.4f}")        
+
+    return trained_net, history
+
 
 # ---- 1: Load data -------
 
@@ -198,6 +282,10 @@ testX, testY, testy = LoadBatch(cifar_dir +  'test_batch')
 
 #print(trainy[0:10])
 #print(trainY[:, 0:10])
+
+#trainX = trainX[:, :20]
+#trainY = trainY[:, :20]
+#trainy = trainy[:20]
 
 d = trainX.shape[0]
 n = trainX.shape[1]
@@ -291,3 +379,18 @@ rel_err_b = np.abs(my_grads['b'] - torch_grads['b']) / np.maximum(
 print("max relative error W:", np.max(rel_err_W))
 print("max relative error b:", np.max(rel_err_b))
 
+
+# ----- 8: Mini batch gradient descent -----
+
+GDparams = {'n_batch': 100, 'eta': 0.001, 'n_epochs': 40}
+
+lam = 0
+
+# train network
+trained_net, history = MiniBatchGD(trainX, trainY, trainy,
+                                   GDparams, init_net, lam, rng=rng)
+
+# test network
+P_test = ApplyNetwork(testX, trained_net)
+test_acc = ComputeAccuracy(P_test, testy)
+print(f"test accuracy: {100 * test_acc:.2f}%")
