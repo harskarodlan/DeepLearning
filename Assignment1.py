@@ -261,7 +261,7 @@ acc = ComputeAccuracy(P, trainy[0:100])
 # define a small net to compare gradients
 d_small = 10
 n_small = 3
-lam = 0     # helper ComputeGradsWithTorch does not account for regularization
+lam = 0.1     
 
 small_net = {}
 small_net['W'] = .01*rng.standard_normal(size = (10, d_small))
@@ -273,7 +273,7 @@ P = ApplyNetwork(X_small, small_net)
 
 # compute gradients
 my_grads = BackwardPass(X_small, Y_small, P, small_net, lam)
-torch_grads = ComputeGradsWithTorch(X_small, trainy[0:n_small], small_net)
+torch_grads = ComputeGradsWithTorch(X_small, trainy[0:n_small], small_net, lam)
 
 # compare max absolute values of gradient calculations
 print("max abs diff W:", np.max(np.abs(my_grads['W'] - torch_grads['W'])))
