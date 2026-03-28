@@ -144,6 +144,42 @@ def ComputeAccuracy(P, y):
 
     return acc
 
+
+def BackwardPass(X, Y, P, network, lam):
+    """
+    Computes gradients of cost wrt weights W, biases b.
+
+    Args:
+        X: image data, (d, n)
+        Y: one-hot encoded image labels, (K, n)
+        P: probability for each class for each image, (K, n)
+        network: network parameters, dict with keys 'W', 'b'
+                 W - (K, d) weights
+                 b - (K, 1) biases
+        lam: regularizataion coefficient lambda
+    Returns:
+        grads: dict of gradients, keys 'W, 'b'
+                 W - dJ/dW, (K, d)
+                 b - dJ/db, (K, 1)
+    """
+    n = X.shape[1]
+    W = network['W']
+
+
+    # G_batch = - (Y_batch - P_batch)
+    G = P - Y 
+
+    # formula from lec 3, slide 101
+    dJdW = (G @ X.T) / n + 2*lam*W
+    # dJ/db = 1//nb* G * 1_nb
+    dJdb = np.sum(G, axis=1, keepdims=True) / n
+
+    grads = {'W': dJdW, 'b': dJdb}
+
+    return grads
+
+
+
 # ---- 1: Load data -------
 
 cifar_dir = './Datasets/cifar-10-batches-py/'
@@ -210,3 +246,5 @@ print(L)
 
 acc = ComputeAccuracy(P, trainy[0:100])
 #print(acc)
+
+#
