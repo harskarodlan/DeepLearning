@@ -1,6 +1,6 @@
 import numpy as np
 import pickle
-
+from torch_gradient_computations import ComputeGradsWithTorch
 
 def LoadBatch(filename):
     """
@@ -128,7 +128,16 @@ def ComputeCost(P, y, network, lam):
 
 
 def ComputeAccuracy(P, y):
-    """
+    """d_small = 10
+n_small = 3
+lam = 0
+small_net['W'] = .01*rng.standard_normal(size = (10, d_small))
+small_net['b'] = np.zeros((10, 1))
+X_small = trainX[0:d_small, 0:n_small]
+Y_small = trainY[:, 0:n_small]
+P = ApplyNetwork(X_small, small_net)
+my_grads = BackwardPass(X_small, Y_small, P, small_net, lam)
+torch_grads = ComputeGradsWithTorch(X_small, train_y[0:n_small], small_net)
     Computes accuracy of classifier.
 
     Args:
@@ -247,4 +256,38 @@ print(L)
 acc = ComputeAccuracy(P, trainy[0:100])
 #print(acc)
 
-#
+# ------ 7: Backward pass -------
+
+# define a small net to compare gradients
+d_small = 10
+n_small = 3
+lam = 0     # helper ComputeGradsWithTorch does not account for regularization
+
+small_net = {}
+small_net['W'] = .01*rng.standard_normal(size = (10, d_small))
+small_net['b'] = np.zeros((10, 1))
+
+X_small = trainX[0:d_small, 0:n_small]
+Y_small = trainY[:, 0:n_small]
+P = ApplyNetwork(X_small, small_net)
+
+# compute gradients
+my_grads = BackwardPass(X_small, Y_small, P, small_net, lam)
+torch_grads = ComputeGradsWithTorch(X_small, trainy[0:n_small], small_net)
+
+# compare max absolute values of gradient calculations
+print("max abs diff W:", np.max(np.abs(my_grads['W'] - torch_grads['W'])))
+print("max abs diff b:", np.max(np.abs(my_grads['b'] - torch_grads['b'])))
+
+# compare relative error of gradient calculations
+eps = 1e-10
+rel_err_W = np.abs(my_grads['W'] - torch_grads['W']) / np.maximum(
+    eps, np.abs(my_grads['W']) + np.abs(torch_grads['W'])
+)
+rel_err_b = np.abs(my_grads['b'] - torch_grads['b']) / np.maximum(
+    eps, np.abs(my_grads['b']) + np.abs(torch_grads['b'])
+)
+
+print("max relative error W:", np.max(rel_err_W))
+print("max relative error b:", np.max(rel_err_b))
+
