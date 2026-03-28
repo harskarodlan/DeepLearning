@@ -191,14 +191,17 @@ def BackwardPass(X, Y, P, network, lam):
     return grads
 
 
-def MiniBatchGD(X, Y, y, GDparams, init_net, lam, rng=None):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None):
     """
     Performs mini-batch gradient descent to train network parameters.
 
     Args:
-        X: image data, (d, n)
-        Y: one-hot encoded image labels, (K, n)
-        y: integer (int64) image labels, (n, )
+        X: image data for training, (d, n)
+        Y: one-hot encoded image labels for training, (K, n)
+        y: integer (int64) image labels for training, (n, )
+        X_val: image data for validation, (d, nt)
+        Y_val: one-hot encoded image labels for validation, (K, n)
+        y_val: integer (int64) image labels for validation, (n, )
         GDparams: dict of GD parameter values, keys 
                   'n_batch' - num of mini batches
                   'eta' - training rate
@@ -225,7 +228,8 @@ def MiniBatchGD(X, Y, y, GDparams, init_net, lam, rng=None):
 
     n = X.shape[1]
 
-    history = {'train_loss': [], 'train_cost': [], 'train_acc': []}
+    history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
+                'val_loss': [], 'val_cost': [], 'val_acc': []}
 
     # 1 epoch = 1 run through entire dataset
     for epoch in range(n_epochs):
@@ -253,7 +257,7 @@ def MiniBatchGD(X, Y, y, GDparams, init_net, lam, rng=None):
             trained_net['W'] -= eta*grads['W']
             trained_net['b'] -= eta*grads['b']
 
-        # evaluate trained net after each epoch
+        # evaluate trained net on original training data after each epoch
         P_epoch = ApplyNetwork(X, trained_net)
 
         train_loss = ComputeLoss(P_epoch, y)
@@ -264,11 +268,20 @@ def MiniBatchGD(X, Y, y, GDparams, init_net, lam, rng=None):
         history['train_cost'].append(train_cost)
         history['train_acc'].append(train_acc)
 
+        # evaluate trained net on validation data after each epoch
+        P_epoch_val = ApplyNetwork(X_val, trained_net)
+
+        val_loss = ComputeLoss(P_epoch_val, y_val)
+        val_cost = ComputeCost(P_epoch_val, y_val, trained_net, lam)
+        val_acc = ComputeAccuracy(P_epoch_val, y_val)
+
+        history['val_loss'].append(val_loss)
+        history['val_cost'].append(val_cost)
+        history['val_acc'].append(val_acc)
 
         print(f"epoch {epoch+1}/{n_epochs}: "
-              f"train loss = {train_loss:.6f}, "
-              f"train cost = {train_cost:.6f}, "
-              f"train acc = {train_acc:.4f}")        
+              f"train loss = {train_loss:.6f}, train cost = {train_cost:.6f}, train acc = {train_acc:.4f}, "
+              f"val loss = {val_loss:.6f}, val cost = {val_cost:.6f}, val acc = {val_acc:.4f}")     
 
     return trained_net, history
 
@@ -388,6 +401,7 @@ lam = 0
 
 # train network
 trained_net, history = MiniBatchGD(trainX, trainY, trainy,
+                                   validX, validY, validy,
                                    GDparams, init_net, lam, rng=rng)
 
 # test network
