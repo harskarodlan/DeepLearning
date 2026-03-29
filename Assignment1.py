@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 import copy
+import matplotlib.pyplot as plt
 
 from torch_gradient_computations import ComputeGradsWithTorch
 
@@ -286,6 +287,36 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None
     return trained_net, history
 
 
+def VisualizeWeights(network, filename=None):
+    """
+    Visualizes weights for each class.
+
+    Args:
+        network: network parameters, dict with keys 'W', 'b'
+        filename: name of file to save visualization image
+    """
+    fig, axes = plt.subplots(2, 5)
+    labels = ['airplane', 'automobile', 'bird', 'cat', 'deer',
+               'dog', 'frog', 'horse', 'ship', 'truck']
+
+    Ws = network['W'].transpose().reshape((32, 32, 3, 10), order='F')
+    W_im = np.transpose(Ws, (1, 0, 2, 3))
+
+    for i in range(10):
+        w_im = W_im[:, :, :, i]
+        w_im_norm = (w_im - np.min(w_im)) / (np.max(w_im) - np.min(w_im))
+
+        ax = axes[i // 5, i % 5]
+        ax.imshow(w_im_norm)
+        ax.set_title(labels[i])
+        ax.axis('off')
+
+    plt.tight_layout()
+    if filename is not None:
+        plt.savefig(filename)
+    #plt.show()
+
+
 # ---- 1: Load data -------
 
 cifar_dir = './Datasets/cifar-10-batches-py/'
@@ -295,10 +326,6 @@ testX, testY, testy = LoadBatch(cifar_dir +  'test_batch')
 
 #print(trainy[0:10])
 #print(trainY[:, 0:10])
-
-#trainX = trainX[:, :20]
-#trainY = trainY[:, :20]
-#trainy = trainy[:20]
 
 d = trainX.shape[0]
 n = trainX.shape[1]
@@ -393,18 +420,52 @@ print("max relative error W:", np.max(rel_err_W))
 print("max relative error b:", np.max(rel_err_b))
 
 
-# ----- 8: Mini batch gradient descent -----
+# ------------------------
 
-GDparams = {'n_batch': 100, 'eta': 0.001, 'n_epochs': 40}
+lambdas = [0, 0, .1, 1]
+etas = [.1, .001, .001, .001]
 
-lam = 0
+for i in range(4):
 
-# train network
-trained_net, history = MiniBatchGD(trainX, trainY, trainy,
-                                   validX, validY, validy,
-                                   GDparams, init_net, lam, rng=rng)
+    # ----- 8: Mini batch gradient descent -----
 
-# test network
-P_test = ApplyNetwork(testX, trained_net)
-test_acc = ComputeAccuracy(P_test, testy)
-print(f"test accuracy: {100 * test_acc:.2f}%")
+    GDparams = {'n_batch': 100, 'eta': etas[i], 'n_epochs': 40}
+
+    lam = lambdas[i]
+
+    # train network
+    trained_net, history = MiniBatchGD(trainX, trainY, trainy,
+                                    validX, validY, validy,
+                                    GDparams, init_net, lam, rng=rng)
+
+    # test network
+    P_test = ApplyNetwork(testX, trained_net)
+    test_acc = ComputeAccuracy(P_test, testy)
+    print(f"test accuracy: {100 * test_acc:.2f}%")
+
+
+    # ------ Plotting statistics --------
+
+    epochs = np.arange(1, GDparams['n_epochs'] + 1)
+
+    plt.figure()
+    plt.plot(epochs, history['train_loss'], label='training loss')
+    plt.plot(epochs, history['val_loss'], label='validation loss')
+    plt.xlabel('epoch')
+    plt.ylabel('loss')
+    plt.title('Training and validation loss')
+    plt.legend()
+    plt.savefig(f'loss_{i}')
+    #plt.show()
+
+    plt.figure()
+    plt.plot(epochs, history['train_cost'], label='training cost')
+    plt.plot(epochs, history['val_cost'], label='validation cost')
+    plt.xlabel('epoch')
+    plt.ylabel('cost')
+    plt.title('Training and validation cost')
+    plt.legend()
+    plt.savefig(f'cost_{i}')
+    #plt.show()
+
+    VisualizeWeights(trained_net, f'W_visualized_{i}')
