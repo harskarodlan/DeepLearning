@@ -132,16 +132,7 @@ def ComputeCost(P, y, network, lam):
 
 
 def ComputeAccuracy(P, y):
-    """d_small = 10
-n_small = 3
-lam = 0
-small_net['W'] = .01*rng.standard_normal(size = (10, d_small))
-small_net['b'] = np.zeros((10, 1))
-X_small = trainX[0:d_small, 0:n_small]
-Y_small = trainY[:, 0:n_small]
-P = ApplyNetwork(X_small, small_net)
-my_grads = BackwardPass(X_small, Y_small, P, small_net, lam)
-torch_grads = ComputeGradsWithTorch(X_small, train_y[0:n_small], small_net)
+    """
     Computes accuracy of classifier.
 
     Args:
@@ -192,7 +183,7 @@ def BackwardPass(X, Y, P, network, lam):
     return grads
 
 
-def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None, flip=False):
     """
     Performs mini-batch gradient descent to train network parameters.
 
@@ -204,7 +195,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None
         Y_val: one-hot encoded image labels for validation, (K, n)
         y_val: integer (int64) image labels for validation, (n, )
         GDparams: dict of GD parameter values, keys 
-                  'n_batch' - num of mini batches
+                  'n_batch' - mini batch size
                   'eta' - training rate
                   'n_epochs' - num of epochs
         init_net: dict of initial network parameters, keys 
@@ -231,6 +222,17 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None
 
     history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
                 'val_loss': [], 'val_cost': [], 'val_acc': []}
+    
+    # reset rng for each GD
+    if seed is not None:
+        local_rng = np.random.default_rng(seed)
+    else:
+        local_rng = None
+
+    # for 2.1b: flip augmentation
+    # get data indices for flipping image
+    if flip:
+        inds_flip = GetFlipIndices()
 
     # 1 epoch = 1 run through entire dataset
     for epoch in range(n_epochs):
@@ -239,10 +241,13 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None
         #    eta = eta / 10
         
         # shuffle dataset before each epoch
-        if rng is not None:
-            perm = rng.permutation(n)
+        if seed is not None:
+            perm = local_rng.permutation(n)
             X_epoch = X[:, perm]
             Y_epoch = Y[:, perm]
+        else:
+            X_epoch = X
+            Y_epoch = Y
 
         for j in range(n//n_batch): # go through mini-batches
             # mini batch indices
@@ -250,8 +255,14 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, rng=None
             j_end = (j+1)*n_batch
 
             # mini batch
-            X_batch = X_epoch[:, j_start:j_end]
+            X_batch = X_epoch[:, j_start:j_end].copy()      # copy for flipping
             Y_batch = Y_epoch[:, j_start:j_end]
+
+            # for 2.1b: flip augmentation
+            # flip each image with 0.5 chance
+            if flip and local_rng is not None:
+                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
+                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
             
             # apply mini batch
             P_batch = ApplyNetwork(X_batch, trained_net)
@@ -341,7 +352,18 @@ def LoadAll(dir):
 
     return X_all, Y_all, y_all
 
-
+def GetFlipIndices():
+    """
+        Returns indexes of an image flipped.
+    """
+    aa = np.int32(np.arange(32)).reshape((32, 1))
+    bb = np.int32(np.arange(31, -1, -1)).reshape((32, 1))
+    vv = np.tile(32 * aa, (1, 32))
+    ind_flip = vv.reshape((32 * 32, 1)) + np.tile(bb, (32, 1))
+    inds_flip = np.vstack((ind_flip, 1024 + ind_flip))
+    inds_flip = np.vstack((inds_flip, 2048 + ind_flip))     # (d, 1)
+    inds_flip = inds_flip.flatten()                         # (d,)
+    return inds_flip
 
 
 # ---- 1: Load data -------
@@ -399,30 +421,139 @@ init_net = {}
 # W is (K, d): one weight per class and input feature
 # Initialize W randomly normally distributed
 init_net['W'] = .01*rng.standard_normal(size = (K, d))  # (K, d)
+init_net['W'] = init_net['W'].astype(np.float32)
 # b is (K, 1): one bias per class
 # initialize b to zero
-init_net['b'] = np.zeros((K, 1))                        # (K, 1)
+init_net['b'] = np.zeros((K, 1), dtype=np.float32)                        # (K, 1)
 
 
 
 # ------------------------
 # bonus points
 
-lam = 0.1
-eta = 0.001
+#lam = 0.1
+#eta = 0.001
+
+"""
+# improvement 2.1c: grid search
+lambda_grid = [0, 1e-4, 1e-3, 1e-2]
+eta_grid = [5e-4, 1e-3]
+batch_grid = [50, 100]
+
+results = []
+
+for lam in lambda_grid:
+    for eta in eta_grid:
+        for n_batch in batch_grid:
+            # ----- 8: Mini batch gradient descent -----
+
+            print("----------------------------------------")
+            print(f"testing parameters: lam={lam:.6f}, eta={eta:.6f}, n_batch={n_batch}")
+            print("----------------------------------------")
+
+            GDparams = {'n_batch': n_batch, 'eta': eta, 'n_epochs': 40}
+
+            # train network
+            trained_net, history = MiniBatchGD(trainX, trainY, trainy,
+                                            validX, validY, validy,
+                                            GDparams, init_net, lam, seed=42, flip=True)
+
+            # training accuracy
+            P_train = ApplyNetwork(trainX, trained_net)
+            train_acc = ComputeAccuracy(P_train, trainy)
+
+            # validation accuracy
+            P_val = ApplyNetwork(validX, trained_net)
+            val_acc = ComputeAccuracy(P_val, validy)
+
+            results.append({
+                'lam': lam,
+                'eta': eta,
+                'n_batch': n_batch,
+                'val_acc': val_acc,
+                'net': trained_net
+            })
+
+            print(f"lam={lam}, eta={eta}, n_batch={n_batch},",
+                   f"val_acc={100*val_acc:.2f}, train_acc={100*train_acc:.2f}")
 
 
-# ----- 8: Mini batch gradient descent -----
+best_result = max(results, key=lambda r: r['val_acc'])
+best_net = best_result['net']
 
-GDparams = {'n_batch': 100, 'eta': eta, 'n_epochs': 40}
+P_test = ApplyNetwork(testX, best_net)
+test_acc = ComputeAccuracy(P_test, testy)
 
-# train network
+
+# training accuracy
+P_train = ApplyNetwork(trainX, best_net)
+train_acc = ComputeAccuracy(P_train, trainy)
+print(f"Training accuracy: {100 * train_acc:.2f}%")
+
+# validation accuracy
+P_val = ApplyNetwork(validX, best_net)
+val_acc = ComputeAccuracy(P_val, validy)
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+
+print("Best parameters:")
+print(best_result['lam'], best_result['eta'], best_result['n_batch'])
+print(f"Test accuracy: {100 * test_acc:.2f}%")
+"""
+
+# -----------------
+
+#"""
+
+
+GDparams = {'n_batch': 100, 'eta': 0.001, 'n_epochs': 20}
+
+# train network FLIPPED
 trained_net, history = MiniBatchGD(trainX, trainY, trainy,
                                 validX, validY, validy,
-                                GDparams, init_net, lam, rng=rng)
+                                GDparams, init_net, 0.01, seed=42, flip=True)
 
-# test network
+print("FLIPPED: ")
+
+# training accuracy
+P_train = ApplyNetwork(trainX, trained_net)
+train_acc = ComputeAccuracy(P_train, trainy)
+print(f"Training accuracy: {100 * train_acc:.2f}%")
+
+# validation accuracy
+P_val = ApplyNetwork(validX, trained_net)
+val_acc = ComputeAccuracy(P_val, validy)
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+
 P_test = ApplyNetwork(testX, trained_net)
 test_acc = ComputeAccuracy(P_test, testy)
-print(f"test accuracy: {100 * test_acc:.2f}%")
+print(f"Test accuracy: {100 * test_acc:.2f}%")
 
+#"""
+
+"""                         
+
+GDparams = {'n_batch': 100, 'eta': 0.001, 'n_epochs':40}       
+
+# train network NOT FLIPPED
+trained_net, history = MiniBatchGD(trainX, trainY, trainy,
+                                validX, validY, validy,
+                                GDparams, init_net, 0.01, seed=42, flip=False)
+
+
+print("NOT FLIPPED: ")
+
+# training accuracy
+P_train = ApplyNetwork(trainX, trained_net)
+train_acc = ComputeAccuracy(P_train, trainy)
+print(f"Training accuracy: {100 * train_acc:.2f}%")
+
+# validation accuracy
+P_val = ApplyNetwork(validX, trained_net)
+val_acc = ComputeAccuracy(P_val, validy)
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+
+P_test = ApplyNetwork(testX, trained_net)
+test_acc = ComputeAccuracy(P_test, testy)
+print(f"Test accuracy: {100 * test_acc:.2f}%")
+
+"""
