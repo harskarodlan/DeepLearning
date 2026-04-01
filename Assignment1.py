@@ -420,11 +420,11 @@ rng.bit_generator.state = BitGen(seed).state
 init_net = {}
 # W is (K, d): one weight per class and input feature
 # Initialize W randomly normally distributed
-init_net['W'] = .01*rng.standard_normal(size = (K, d))  # (K, d)
+init_net['W'] = .01*rng.standard_normal(size = (K, d))         # (K, d)
 init_net['W'] = init_net['W'].astype(np.float32)
 # b is (K, 1): one bias per class
 # initialize b to zero
-init_net['b'] = np.zeros((K, 1), dtype=np.float32)                        # (K, 1)
+init_net['b'] = np.zeros((K, 1), dtype=np.float32)             # (K, 1)
 
 
 
