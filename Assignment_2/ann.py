@@ -36,15 +36,14 @@ def ApplyNetwork(X, network):
                  network['b'][1] = b2, shape (K, 1)
 
     Returns:
-        P: probability for each class for each image, (K, n)
         fp_data: intermediary forward-pass values, dict with keys
                  S1 - (m, n)
                  H - (m, n)
                  S - (K, n)
-                 P - (K, n)
+                 P - (K, n) : probability for each class for each image
                  
     """
-    print("Hi")
+
     W1 = network['W'][0]
     b1 = network['b'][0]
     W2 = network['W'][1]
@@ -59,7 +58,7 @@ def ApplyNetwork(X, network):
 
     fp_data = {'S1': S1, 'H': H, 'S': S, 'P': P}
 
-    return P, fp_data
+    return fp_data
 
 
 def ComputeLoss(P, y):
@@ -118,7 +117,7 @@ def ComputeAccuracy(P, y):
     return acc
 
 
-def BackwardPass(X, Y, P, network, lam):
+def BackwardPass(X, Y, fp_data, network, lam):
     """
     Computes gradients of cost wrt weights W, biases b.
 
@@ -136,18 +135,36 @@ def BackwardPass(X, Y, P, network, lam):
                  b - dJ/db, (K, 1)
     """
     n = X.shape[1]
-    W = network['W']
 
+    W1 = network['W'][0]
+    W2 = network['W'][1]
 
-    # G_batch = - (Y_batch - P_batch)
+    H = fp_data['H']      # (m, n)
+    P = fp_data['P']      # (K, n)
+
+    # Follow procedure from lecture 4, slide 34-37:
+
+    # step 1: G_batch = - (Y_batch - P_batch)
     G = P - Y
 
-    # formula from lec 3, slide 101
-    dJdW = (G @ X.T) / n + 2*lam*W
-    # dJ/db = 1//nb* G * 1_nb
-    dJdb = np.sum(G, axis=1, keepdims=True) / n
+    # step 2: Add gradient of l wrt b2 & W2
+    dJdW2 = (G @ H.T) / n + 2*lam*W2                # (K, m)
+    # dJ/db2 = 1/nb * G * 1_nb
+    dJdb2 = np.sum(G, axis=1, keepdims=True) / n    # (K, 1)
 
-    grads = {'W': dJdW, 'b': dJdb}
+    # step 3: backprop gradient through 2nd layer
+    G = W2.T @ G                                    # (m, n)
+    # G = G*ind(H>0)
+    G = G * (H > 0)                                 # (m, n)
+
+    # step 4: Add gradient of l wrt b1 & W1
+    dJdW1 = (G @ X.T) / n + 2*lam*W1                # (m, d)
+    # dJ/db1 = 1/nb * G * 1_nb
+    dJdb1 = np.sum(G, axis=1, keepdims=True) / n    # (m, 1)
+
+    grads = {}
+    grads['W'] = [dJdW1, dJdW2]
+    grads['b'] = [dJdb1, dJdb2]
 
     return grads
 
@@ -244,8 +261,11 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             grads = BackwardPass(X_batch, Y_batch, P_batch, trained_net, lam)
 
             # update parameters using GD with mini batch
-            trained_net['W'] -= eta*grads['W']
-            trained_net['b'] -= eta*grads['b']
+            trained_net['W'][0] -= eta*grads['W'][0]
+            trained_net['b'][0] -= eta*grads['b'][0]
+
+            trained_net['W'][1] -= eta*grads['W'][1]
+            trained_net['b'][1] -= eta*grads['b'][1]
 
         # evaluate trained net on original training data after each epoch
         P_epoch = ApplyNetwork(X, trained_net)
@@ -313,5 +333,4 @@ def InitializeNet(d, m, K, seed=42):
 
 
 def ReLU(S):
-  print("hi")
   return np.maximum(0, S)

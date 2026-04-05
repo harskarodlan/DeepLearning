@@ -1,38 +1,51 @@
 import torch
 import numpy as np
 
-def ComputeGradsWithTorch(X, y, network_params, lam):
-
-    # torch requires arrays to be torch tensors
+def ComputeGradsWithTorch(X, y, network_params):
+    
     Xt = torch.from_numpy(X)
     Xt = Xt.to(torch.float64)
 
-    # will be computing the gradient w.r.t. these parameters
-    W = torch.tensor(network_params['W'], requires_grad=True)
-    b = torch.tensor(network_params['b'], requires_grad=True)    
-    
-    N = X.shape[1]
-    
-    scores = torch.matmul(W, Xt)  + b;
+    L = len(network_params['W'])
 
-    ## give an informative name to this torch class
+    # will be computing the gradient w.r.t. these parameters    
+    W = [None] * L
+    b = [None] * L    
+    for i in range(len(network_params['W'])):
+        W[i] = torch.tensor(network_params['W'][i], requires_grad=True)
+        b[i] = torch.tensor(network_params['b'][i], requires_grad=True)        
+
+    ## give informative names to these torch classes        
+    apply_relu = torch.nn.ReLU()
     apply_softmax = torch.nn.Softmax(dim=0)
 
-    # apply softmax to each column of scores
+    #### BEGIN your code ###########################
+    
+    # Apply the scoring function corresponding to equations (1-3) in assignment description 
+    # If X is d x n then the final scores torch array should have size 10 x n 
+
+    S1 = torch.matmul(W[0], Xt) + b[0]     # (m, n)
+    H = apply_relu(S1)                     # (m, n)
+    scores = torch.matmul(W[1], H) + b[1]  # (K, n)
+
+    #### END of your code ###########################            
+
+    # apply SoftMax to each column of scores     
     P = apply_softmax(scores)
     
-    ## compute the loss
-    loss = torch.mean(-torch.log(P[y, np.arange(N)]))    
-    cost = loss + lam * torch.sum(torch.multiply(W, W))
-
-
+    # compute the loss
+    n = X.shape[1]
+    loss = torch.mean(-torch.log(P[y, np.arange(n)]))
+    
     # compute the backward pass relative to the loss and the named parameters 
-    #loss.backward()
-    cost.backward()
+    loss.backward()
 
     # extract the computed gradients and make them numpy arrays 
     grads = {}
-    grads['W'] = W.grad.numpy()
-    grads['b'] = b.grad.numpy()
+    grads['W'] = [None] * L
+    grads['b'] = [None] * L
+    for i in range(L):
+        grads['W'][i] = W[i].grad.numpy()
+        grads['b'][i] = b[i].grad.numpy()
 
-    return grads    
+    return grads

@@ -48,7 +48,8 @@ validX = NormalizeData(validX, mean_X, std_X)
 testX = NormalizeData(testX, mean_X, std_X)
 
 
-# -------- Initialize ----------------
+# -------- Initialization test ----------------
+"""
 
 m = 50
 
@@ -58,13 +59,54 @@ print(trainX.shape, trainY.shape, trainy.shape)
 print(net['W'][0].shape, net['b'][0].shape)
 print(net['W'][1].shape, net['b'][1].shape)
 
+"""
 
-# ---------- Forward pass --------
+
+# ---------- Forward pass test --------
+"""
 
 X_small = trainX[:, 0:5]
-P, fp_data = ApplyNetwork(X_small, net)
+fp_data = ApplyNetwork(X_small, net)
 
-print("P shape:", P.shape)                 # (10, 5)
+print("P shape:", fp_data['P'].shape)                 # (10, 5)
 print("s1 shape:", fp_data['S1'].shape)    # (50, 5)
 print("h shape:", fp_data['H'].shape)      # (50, 5)
 print("s shape:", fp_data['S'].shape)      # (10, 5)
+
+"""
+
+
+# --------- Backward pass test ---------
+
+d_small = 5
+n_small = 3
+m = 6
+lam = 0
+small_net = InitializeNet(d_small, m, K)
+
+X_small = trainX[0:d_small, 0:n_small]
+Y_small = trainY[:, 0:n_small]
+fp_data = ApplyNetwork(X_small, small_net)
+my_grads = BackwardPass(X_small, Y_small, fp_data, small_net, lam)
+
+torch_grads = ComputeGradsWithTorch(X_small, trainy[0:n_small], small_net)
+
+# Print comparison error between analytic and PyTorch gradients
+for layer in range(len(my_grads['W'])):
+    abs_diff_W = np.max(np.abs(my_grads['W'][layer] - torch_grads['W'][layer]))
+    abs_diff_b = np.max(np.abs(my_grads['b'][layer] - torch_grads['b'][layer]))
+
+    rel_diff_W = abs_diff_W / np.maximum(
+        1e-12,
+        np.max(np.abs(my_grads['W'][layer]) + np.abs(torch_grads['W'][layer]))
+    )
+    rel_diff_b = abs_diff_b / np.maximum(
+        1e-12,
+        np.max(np.abs(my_grads['b'][layer]) + np.abs(torch_grads['b'][layer]))
+    )
+
+    print(f"Layer {layer+1}")
+    print(f"  W max abs diff: {abs_diff_W:.10e}")
+    print(f"  W max rel diff: {rel_diff_W:.10e}")
+    print(f"  b max abs diff: {abs_diff_b:.10e}")
+    print(f"  b max rel diff: {rel_diff_b:.10e}")
