@@ -275,3 +275,24 @@ def GetFlipIndices():
 
 
 
+def InitializeNet(d, m, K, seed=42):
+  """
+  Initialize network parameters.
+  """
+  rng = np.random.default_rng(seed)
+
+  net_params = {}
+  net_params['W'] = [None] * 2
+  net_params['b'] = [None] * 2
+
+  net_params['W'][0] = (1 / np.sqrt(d)) * rng.standard_normal((m, d))
+  net_params['b'][0] = np.zeros((m, 1))
+
+  net_params['W'][1] = (1 / np.sqrt(m)) * rng.standard_normal((K, m))
+  net_params['b'][1] = np.zeros((K, 1))
+
+  return net_params
+
+
+
+

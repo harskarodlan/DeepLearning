@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
 def VisualizeWeights(network, filename=None):
     """
     Visualizes weights for each class.
