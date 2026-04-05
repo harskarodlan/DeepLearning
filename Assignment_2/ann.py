@@ -95,7 +95,7 @@ def ComputeCost(P, y, network, lam):
         cost = loss + regularization term
     """
     loss = ComputeLoss(P, y)
-    reg = lam * np.sum(network['W'] ** 2)
+    reg = lam * sum(np.sum(W ** 2) for W in network['W'])
     return loss + reg
 
 
@@ -268,7 +268,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             trained_net['b'][1] -= eta*grads['b'][1]
 
         # evaluate trained net on original training data after each epoch
-        P_epoch = ApplyNetwork(X, trained_net)
+        P_epoch = ApplyNetwork(X, trained_net)['P']
 
         train_loss = ComputeLoss(P_epoch, y)
         train_cost = ComputeCost(P_epoch, y, trained_net, lam)
@@ -279,7 +279,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
         history['train_acc'].append(train_acc)
 
         # evaluate trained net on validation data after each epoch
-        P_epoch_val = ApplyNetwork(X_val, trained_net)
+        P_epoch_val = ApplyNetwork(X_val, trained_net)['P']
 
         val_loss = ComputeLoss(P_epoch_val, y_val)
         val_cost = ComputeCost(P_epoch_val, y_val, trained_net, lam)
