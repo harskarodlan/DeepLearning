@@ -29,20 +29,37 @@ def ApplyNetwork(X, network):
 
     Args:
         X: image data, (d, n)
-        network: network parameters, dict with keys 'W', 'b'
-                 W - (K, d) weights
-                 b - (K, 1) biases
+        network: network parameters, dict with  
+                 network['W'][0] = W1, shape (m, d)
+                 network['b'][0] = b1, shape (m, 1)
+                 network['W'][1] = W2, shape (K, m)
+                 network['b'][1] = b2, shape (K, 1)
+
     Returns:
         P: probability for each class for each image, (K, n)
+        fp_data: intermediary forward-pass values, dict with keys
+                 S1 - (m, n)
+                 H - (m, n)
+                 S - (K, n)
+                 P - (K, n)
+                 
     """
-    W = network['W']
-    b = network['b']
+    print("Hi")
+    W1 = network['W'][0]
+    b1 = network['b'][0]
+    W2 = network['W'][1]
+    b2 = network['b'][1]
+  
     n = X.shape[1]
 
-    S = W @ X + b
-    P = Softmax(S)
+    S1 = W1 @ X + b1    # (m, n)
+    H = ReLU(S1)        # (m, n)
+    S = W2 @ H + b2     # (K, n)
+    P = Softmax(S)      # (K, n)
 
-    return P
+    fp_data = {'S1': S1, 'H': H, 'S': S, 'P': P}
+
+    return P, fp_data
 
 
 def ComputeLoss(P, y):
@@ -295,4 +312,6 @@ def InitializeNet(d, m, K, seed=42):
 
 
 
-
+def ReLU(S):
+  print("hi")
+  return np.maximum(0, S)
