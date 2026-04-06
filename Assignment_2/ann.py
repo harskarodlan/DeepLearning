@@ -125,9 +125,11 @@ def BackwardPass(X, Y, fp_data, network, lam):
         X: image data, (d, n)
         Y: one-hot encoded image labels, (K, n)
         P: probability for each class for each image, (K, n)
-        network: network parameters, dict with keys 'W', 'b'
-                 W - (K, d) weights
-                 b - (K, 1) biases
+        network: network parameters, dict with  
+                 network['W'][0] = W1, shape (m, d)
+                 network['b'][0] = b1, shape (m, 1)
+                 network['W'][1] = W2, shape (K, m)
+                 network['b'][1] = b2, shape (K, 1)
         lam: regularizataion coefficient lambda
     Returns:
         grads: dict of gradients, keys 'W, 'b'
@@ -171,7 +173,7 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
 
 
-def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None, flip=False):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None):
     """
     Performs mini-batch gradient descent to train network parameters.
 
@@ -184,17 +186,19 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
         y_val: integer (int64) image labels for validation, (n, )
         GDparams: dict of GD parameter values, keys
                   'n_batch' - mini batch size
-                  'eta' - training rate
-                  'n_epochs' - num of epochs
-        init_net: dict of initial network parameters, keys
-                  'W' - (K, d) weights
-                  'b' - (K, 1) biases
+                  'eta_min' - minimum learning rate of cycle
+                  'eta_max' - maximum learning rate of cycle
+                  'n_s' - stepsize
+                  'n_cycles' - num of cycles
+        init_net: initial network parameters, dict with  
+                 network['W'][0] = W1, shape (m, d)
+                 network['b'][0] = b1, shape (m, 1)
+                 network['W'][1] = W2, shape (K, m)
+                 network['b'][1] = b2, shape (K, 1)
         lam: regularization coefficient lambda
-        rng: random generator for shuffling
+        seed: random generator seed for shuffling
     Returns:
-        trained_net: dict of trained network parameters, keys
-                     'W' - (K, d) weights
-                     'b' - (K, 1) biases
+        trained_net: dict of trained network parameters
         history: dict of performance statistics for each epoch, keys
                  'train_loss' - loss after each epoch
                  'train_cost' - cost after each epoch
@@ -203,13 +207,19 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
     trained_net = copy.deepcopy(init_net)
 
     n_batch = GDparams['n_batch']
-    eta = GDparams['eta']
-    n_epochs = GDparams['n_epochs']
+    eta_min = GDparams['eta_min']
+    eta_max = GDparams['eta_max']
+    n_s = GDparams['n_s']
+    n_cycles = GDparams['n_cycles']
 
     n = X.shape[1]
 
+    t = 0
+    t_end = 2 * n_s * n_cycles
+
     history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
-                'val_loss': [], 'val_cost': [], 'val_acc': []}
+                'val_loss': [], 'val_cost': [], 'val_acc': [],
+                'eta': [], 'step': []}
 
     # reset rng for each GD
     if seed is not None:
@@ -217,17 +227,8 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
     else:
         local_rng = None
 
-    # for 2.1b: flip augmentation
-    # get data indices for flipping image
-    if flip:
-        inds_flip = GetFlipIndices()
-
-    # 1 epoch = 1 run through entire dataset
-    for epoch in range(n_epochs):
-        # improvement 2.2d: step decay
-        #if epoch in [20, 30]:
-        #    eta = eta / 10
-
+    # run until all cycles done
+    while t <= t_end:
         # shuffle dataset before each epoch
         if seed is not None:
             perm = local_rng.permutation(n)
@@ -238,27 +239,22 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             Y_epoch = Y
 
         for j in range(n//n_batch): # go through mini-batches
+            if t > t_end:
+                break
+
             # mini batch indices
             j_start = j*n_batch
             j_end = (j+1)*n_batch
 
-            # mini batch
-            if flip:
-              X_batch = X_epoch[:, j_start:j_end].copy()      # copy for flipping
-            else:
-              X_batch = X_epoch[:, j_start:j_end]
+            X_batch = X_epoch[:, j_start:j_end]
             Y_batch = Y_epoch[:, j_start:j_end]
 
-            # for 2.1b: flip augmentation
-            # flip each image with 0.5 chance
-            if flip and local_rng is not None:
-                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
-                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
+            eta = CyclicEta(t, eta_min, eta_max, n_s)
 
             # apply mini batch
-            P_batch = ApplyNetwork(X_batch, trained_net)
+            fp_data = ApplyNetwork(X_batch, trained_net)
             # backprop mini batch
-            grads = BackwardPass(X_batch, Y_batch, P_batch, trained_net, lam)
+            grads = BackwardPass(X_batch, Y_batch, fp_data, trained_net, lam)
 
             # update parameters using GD with mini batch
             trained_net['W'][0] -= eta*grads['W'][0]
@@ -267,48 +263,13 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             trained_net['W'][1] -= eta*grads['W'][1]
             trained_net['b'][1] -= eta*grads['b'][1]
 
-        # evaluate trained net on original training data after each epoch
-        P_epoch = ApplyNetwork(X, trained_net)['P']
+            if t % 10 == 0:
+                RecordHistory(X, y, X_val, y_val, trained_net, lam, eta, t, history)
+                PrintProgress(t, eta, history)
 
-        train_loss = ComputeLoss(P_epoch, y)
-        train_cost = ComputeCost(P_epoch, y, trained_net, lam)
-        train_acc = ComputeAccuracy(P_epoch, y)
-
-        history['train_loss'].append(train_loss)
-        history['train_cost'].append(train_cost)
-        history['train_acc'].append(train_acc)
-
-        # evaluate trained net on validation data after each epoch
-        P_epoch_val = ApplyNetwork(X_val, trained_net)['P']
-
-        val_loss = ComputeLoss(P_epoch_val, y_val)
-        val_cost = ComputeCost(P_epoch_val, y_val, trained_net, lam)
-        val_acc = ComputeAccuracy(P_epoch_val, y_val)
-
-        history['val_loss'].append(val_loss)
-        history['val_cost'].append(val_cost)
-        history['val_acc'].append(val_acc)
-
-        print(f"epoch {epoch+1}/{n_epochs}: "
-              f"train loss = {train_loss:.6f}, train cost = {train_cost:.6f}, train acc = {train_acc:.4f}, "
-              f"val loss = {val_loss:.6f}, val cost = {val_cost:.6f}, val acc = {val_acc:.4f}")
+            t += 1
 
     return trained_net, history
-
-
-
-def GetFlipIndices():
-    """
-        Returns indexes of an image flipped.
-    """
-    aa = np.int32(np.arange(32)).reshape((32, 1))
-    bb = np.int32(np.arange(31, -1, -1)).reshape((32, 1))
-    vv = np.tile(32 * aa, (1, 32))
-    ind_flip = vv.reshape((32 * 32, 1)) + np.tile(bb, (32, 1))
-    inds_flip = np.vstack((ind_flip, 1024 + ind_flip))
-    inds_flip = np.vstack((inds_flip, 2048 + ind_flip))     # (d, 1)
-    inds_flip = inds_flip.flatten()                         # (d,)
-    return inds_flip
 
 
 
@@ -334,3 +295,55 @@ def InitializeNet(d, m, K, seed=42):
 
 def ReLU(S):
   return np.maximum(0, S)
+
+
+
+def CyclicEta(t, eta_min, eta_max, n_s):
+    """
+    Computes cyclic learning rate eta_t.
+
+    Args:
+        t: step in eta cycle
+        eta_min: minimum learning rate
+        eta_max: maximum learning rate
+        n_s: step size
+
+    Returns:
+        eta_t: learning rate at step t
+    """
+
+    l = t // (2 * n_s)
+
+    if 2*l*n_s <= t <= (2*l + 1) * n_s:
+        eta_t = eta_min + ((t - 2*l*n_s) / n_s)*(eta_max - eta_min)
+    else:
+        eta_t = eta_max - ((t - (2*l + 1)*n_s) / n_s)*(eta_max - eta_min)
+
+    return eta_t
+
+
+def RecordHistory(X, y, X_val, y_val, net, lam, eta, t, history):
+    P_train = ApplyNetwork(X, net)['P']
+    P_val = ApplyNetwork(X_val, net)['P']
+
+    history['train_loss'].append(ComputeLoss(P_train, y))
+    history['train_cost'].append(ComputeCost(P_train, y, net, lam))
+    history['train_acc'].append(ComputeAccuracy(P_train, y))
+
+    history['val_loss'].append(ComputeLoss(P_val, y_val))
+    history['val_cost'].append(ComputeCost(P_val, y_val, net, lam))
+    history['val_acc'].append(ComputeAccuracy(P_val, y_val))
+
+    history['eta'].append(eta)
+    history['step'].append(t)
+
+
+
+def PrintProgress(t, eta, history):
+    print(f"step {t}: eta = {eta:.6f}, "
+            f"train loss = {history['train_loss'][-1]:.6f}, "
+            f"train cost = {history['train_cost'][-1]:.6f}, "
+            f"train acc = {history['train_acc'][-1]:.4f}, "
+            f"val loss = {history['val_loss'][-1]:.6f}, "
+            f"val cost = {history['val_cost'][-1]:.6f}, "
+            f"val acc = {history['val_acc'][-1]:.4f}")

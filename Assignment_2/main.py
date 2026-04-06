@@ -160,3 +160,22 @@ print(f"Validation accuracy: {100 * val_acc:.2f}%")
 
 """
 
+m = 50
+lam = 0.01
+
+net = InitializeNet(d, m, K)
+
+eta_min = 1e-5
+eta_max = 1e-1
+n_s = 500
+n_cycles = 1
+
+GDparams = {'n_batch': 100, 'eta_min': eta_min, 'eta_max': eta_max,
+             'n_s': n_s, 'n_cycles': n_cycles}
+
+
+trained_net, history = MiniBatchGD(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam, seed=42
+)
