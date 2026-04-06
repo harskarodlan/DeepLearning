@@ -173,7 +173,7 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
 
 
-def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, n_rec=10, seed=None):
     """
     Performs mini-batch gradient descent to train network parameters.
 
@@ -196,6 +196,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
                  network['W'][1] = W2, shape (K, m)
                  network['b'][1] = b2, shape (K, 1)
         lam: regularization coefficient lambda
+        n_rec: num times per cycle performance is recorded
         seed: random generator seed for shuffling
     Returns:
         trained_net: dict of trained network parameters
@@ -217,7 +218,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
     t = 0
     t_end = 2 * n_s * n_cycles
 
-    record_rate = (2 * n_s) // 10
+    record_rate = (2 * n_s) // n_rec
 
     history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
                 'val_loss': [], 'val_cost': [], 'val_acc': [],

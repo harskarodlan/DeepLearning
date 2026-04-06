@@ -18,22 +18,23 @@ cifar_dir = '../Datasets/cifar-10-batches-py/'
 
 # --------- For 1 batch
 
-trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
-validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
+#trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
+#validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
 
 
 # --------- For all batches
-"""
+#"""
+n_val = 5000
 
 X, Y, y = LoadAll(cifar_dir)
-trainX = X[:, 1000:]
-trainY = Y[:, 1000:]
-trainy = y[1000:]
-validX = X[:, :1000]
-validY = Y[:, :1000]
-validy = y[:1000]
+trainX = X[:, n_val:]
+trainY = Y[:, n_val:]
+trainy = y[n_val:]
+validX = X[:, :n_val]
+validY = Y[:, :n_val]
+validy = y[:n_val]
 
-"""
+#"""
 
 # ---------
 
@@ -160,6 +161,9 @@ print(f"Validation accuracy: {100 * val_acc:.2f}%")
 
 """
 
+# .................. Exercise 3: cyclic GD ------------------------
+"""
+
 m = 50
 lam = 0.01
 
@@ -180,6 +184,9 @@ trained_net, history = MiniBatchGD(
     GDparams, net, lam, seed=42
 )
 
+
+# ............. Plot eta
+
 plt.figure()
 plt.plot(history['step'], history['eta'])
 plt.xlabel('update step')
@@ -187,6 +194,9 @@ plt.ylabel('eta')
 plt.title('Cyclic learning rate')
 plt.grid(True)
 plt.show()
+
+
+# ............ Plot performance
 
 PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
                 title='Cost plot', ylabel='cost', file_name='ex3_cost')
@@ -196,3 +206,50 @@ PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
 
 PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
                 title='Accuracy plot', ylabel='accuracy', file_name='ex3_acc')
+
+"""
+
+
+# -------------------- Exercise 4 ------------------
+
+# --------------- Proper run
+"""
+
+m = 50
+lam = 0.01
+
+net = InitializeNet(d, m, K)
+
+eta_min = 1e-5
+eta_max = 1e-1
+n_s = 800
+n_cycles = 3
+
+GDparams = {
+    'n_batch': 100,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles
+}
+
+trained_net, history = MiniBatchGD(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam, n_rec=9, seed=42
+)
+
+
+PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
+                title='Cost plot', ylabel='cost', file_name='fig4_cost')
+
+PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
+                title='Loss plot', ylabel='loss', file_name='fig4_loss')
+
+PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
+                title='Accuracy plot', ylabel='accuracy', file_name='fig4_acc')
+
+"""
+
+
+# ----------------- Coarse lambda search
