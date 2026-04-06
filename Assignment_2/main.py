@@ -179,3 +179,20 @@ trained_net, history = MiniBatchGD(
     validX, validY, validy,
     GDparams, net, lam, seed=42
 )
+
+plt.figure()
+plt.plot(history['step'], history['eta'])
+plt.xlabel('update step')
+plt.ylabel('eta')
+plt.title('Cyclic learning rate')
+plt.grid(True)
+plt.show()
+
+PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
+                title='Cost plot', ylabel='cost', file_name='ex3_cost')
+
+PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
+                title='Loss plot', ylabel='loss', file_name='ex3_loss')
+
+PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
+                title='Accuracy plot', ylabel='accuracy', file_name='ex3_acc')

@@ -217,6 +217,8 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
     t = 0
     t_end = 2 * n_s * n_cycles
 
+    record_rate = (2 * n_s) // 10
+
     history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
                 'val_loss': [], 'val_cost': [], 'val_acc': [],
                 'eta': [], 'step': []}
@@ -263,7 +265,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             trained_net['W'][1] -= eta*grads['W'][1]
             trained_net['b'][1] -= eta*grads['b'][1]
 
-            if t % 10 == 0:
+            if t % record_rate == 0:
                 RecordHistory(X, y, X_val, y_val, trained_net, lam, eta, t, history)
                 PrintProgress(t, eta, history)
 

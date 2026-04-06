@@ -30,3 +30,17 @@ def VisualizeWeights(network, filename=None):
     if filename is not None:
         plt.savefig(filename)
     #plt.show()
+
+
+def PlotPerformance(steps, train_values, val_values, title, ylabel, file_name=None):
+    plt.figure()
+    plt.plot(steps, train_values, label='training')
+    plt.plot(steps, val_values, label='validation')
+    plt.xlabel('update step')
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
+    if file_name:
+        plt.savefig("./images/"+file_name)
+    plt.show()
