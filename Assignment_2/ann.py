@@ -173,7 +173,7 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
 
 
-def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None, n_rec=10):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None, n_rec=10, flip=False):
     """
     Performs mini-batch gradient descent to train network parameters.
 
@@ -198,6 +198,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
         lam: regularization coefficient lambda
         seed: random generator seed for shuffling
         n_rec: num times per cycle performance is recorded
+        flip: if True, training data is flipped w/ 50% chance
     Returns:
         trained_net: dict of trained network parameters
         history: dict of performance statistics for each epoch, keys
@@ -230,6 +231,10 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
     else:
         local_rng = None
 
+    # get data indices for flipping image
+    if flip:
+        inds_flip = GetFlipIndices()
+
     # run until all cycles done
     while t <= t_end:
         # shuffle dataset before each epoch
@@ -249,8 +254,16 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             j_start = j*n_batch
             j_end = (j+1)*n_batch
 
-            X_batch = X_epoch[:, j_start:j_end]
+            if flip:
+                X_batch = X_epoch[:, j_start:j_end].copy()  # copy for flipping
+            else:
+                X_batch = X_epoch[:, j_start:j_end]
             Y_batch = Y_epoch[:, j_start:j_end]
+
+            # flip each image with 0.5 chance
+            if flip and local_rng is not None:
+                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
+                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
 
             eta = CyclicEta(t, eta_min, eta_max, n_s)
 
@@ -404,6 +417,20 @@ def SaveResults(results, file_name):
                 f"best_val_acc={res['best_val_acc']:.6f}, "
                 f"best_train_acc={res['best_train_acc']:.6f}\n"
             )
+
+
+def GetFlipIndices():
+    """
+        Returns indexes of an image flipped.
+    """
+    aa = np.int32(np.arange(32)).reshape((32, 1))
+    bb = np.int32(np.arange(31, -1, -1)).reshape((32, 1))
+    vv = np.tile(32 * aa, (1, 32))
+    ind_flip = vv.reshape((32 * 32, 1)) + np.tile(bb, (32, 1))
+    inds_flip = np.vstack((ind_flip, 1024 + ind_flip))
+    inds_flip = np.vstack((inds_flip, 2048 + ind_flip))     # (d, 1)
+    inds_flip = inds_flip.flatten()                         # (d,)
+    return inds_flip
 
 
 
