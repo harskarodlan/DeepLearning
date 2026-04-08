@@ -457,3 +457,163 @@ def GetFlipIndices():
 
 
 
+
+
+def MiniBatchGDNesterov(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam,
+                 seed=None, n_rec=10, flip=False, p_keep=1.0):
+    """
+    Performs mini-batch gradient descent to train network parameters.
+    With nesterov optimizer.
+
+    Args:
+        X: image data for training, (d, n)
+        Y: one-hot encoded image labels for training, (K, n)
+        y: integer (int64) image labels for training, (n, )
+        X_val: image data for validation, (d, nt)
+        Y_val: one-hot encoded image labels for validation, (K, n)
+        y_val: integer (int64) image labels for validation, (n, )
+        GDparams: dict of GD parameter values, keys
+                  'n_batch' - mini batch size
+                  'eta_min' - minimum learning rate
+                  'eta_max' - maximum learning rate
+                  'n_s' - stepsize
+                  'n_cycles' - num of cycles
+                  'gamma' - nesterov parameter
+        init_net: initial network parameters, dict with  
+                 network['W'][0] = W1, shape (m, d)
+                 network['b'][0] = b1, shape (m, 1)
+                 network['W'][1] = W2, shape (K, m)
+                 network['b'][1] = b2, shape (K, 1)
+        lam: regularization coefficient lambda
+        seed: random generator seed for shuffling
+        n_rec: num times per cycle performance is recorded
+        flip: if True, training data is flipped w/ 50% chance
+        p_keep: probability of not dropping a hidden activation
+    Returns:
+        trained_net: dict of trained network parameters
+        history: dict of performance statistics for each epoch, keys
+                 'train_loss' - loss after each epoch
+                 'train_cost' - cost after each epoch
+                 'train_acc' - accuracy after each epoch
+    """
+    trained_net = copy.deepcopy(init_net)
+
+    n_batch = GDparams['n_batch']
+    eta_min = GDparams['eta_min']
+    eta_max = GDparams['eta_max']
+    n_s = GDparams['n_s']
+    n_cycles = GDparams['n_cycles']
+    gamma = GDparams['gamma']
+
+    n = X.shape[1]
+
+    t = 0
+    t_end = 2 * n_s * n_cycles
+
+    record_rate = (2 * n_s) // n_rec
+
+    history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
+                'val_loss': [], 'val_cost': [], 'val_acc': [],
+                'eta': [], 'step': []}
+
+    # reset rng for each GD
+    if seed is not None:
+        local_rng = np.random.default_rng(seed)
+    else:
+        local_rng = None
+
+    # get data indices for flipping image
+    if flip:
+        inds_flip = GetFlipIndices()
+
+    vel = {}
+    vel['W'] = [np.zeros_like(W) for W in trained_net['W']]
+    vel['b'] = [np.zeros_like(b) for b in trained_net['b']]
+
+    # run until all cycles done
+    while t <= t_end:
+        # shuffle dataset before each epoch
+        if seed is not None:
+            perm = local_rng.permutation(n)
+            X_epoch = X[:, perm]
+            Y_epoch = Y[:, perm]
+        else:
+            X_epoch = X
+            Y_epoch = Y
+
+        for j in range(n//n_batch): # go through mini-batches
+            if t > t_end:
+                break
+
+            # mini batch indices
+            j_start = j*n_batch
+            j_end = (j+1)*n_batch
+
+            if flip:
+                X_batch = X_epoch[:, j_start:j_end].copy()  # copy for flipping
+            else:
+                X_batch = X_epoch[:, j_start:j_end]
+            Y_batch = Y_epoch[:, j_start:j_end]
+
+            # flip each image with 0.5 chance
+            if flip and local_rng is not None:
+                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
+                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
+
+            eta = LinearEta(t, eta_min, eta_max, t_end)
+
+            trained_net, vel = NesterovStep(
+                X_batch, Y_batch, trained_net, vel,
+                eta, gamma, lam,
+                p_keep=p_keep, rng=local_rng
+            )
+
+            if t % record_rate == 0:
+                RecordHistory(X, y, X_val, y_val, trained_net, lam, eta, t, history)
+                PrintProgress(t, eta, history)
+
+            t += 1
+
+    return trained_net, history
+
+
+def LinearEta(t, eta_min, eta_max, t_end):
+    """
+    Computes linearly decayed eta.
+    """
+    return eta_max - (eta_max - eta_min) * (t / t_end)
+
+
+
+def NesterovStep(X_batch, Y_batch, trained_net, vel, eta, gamma, lam,
+                 p_keep=1.0, rng=None):
+    """
+    Performs one Nesterov step.
+    """
+    # From lecture 5 slides: let x(t) be parameters (trained_net)
+    # First compute estimated parameters for next step:
+    # e(t+1) = x(t) - gamma * v(t)
+    estimated_net = copy.deepcopy(trained_net)
+    estimated_net['W'][0] -= gamma * vel['W'][0]
+    estimated_net['b'][0] -= gamma * vel['b'][0]
+    estimated_net['W'][1] -= gamma * vel['W'][1]
+    estimated_net['b'][1] -= gamma * vel['b'][1]
+
+    # get gradients using estimated parameters e(t+1)
+    fp_data = ApplyNetwork(X_batch, estimated_net, training=True, p_keep=p_keep, rng=rng)
+    grads = BackwardPass(X_batch, Y_batch, fp_data, estimated_net, lam)
+
+    # update velocity:
+    # v(t+1) = gamma * v(t) + eta * grad(e(t+1))
+    vel['W'][0] = gamma * vel['W'][0] + eta * grads['W'][0]
+    vel['b'][0] = gamma * vel['b'][0] + eta * grads['b'][0]
+    vel['W'][1] = gamma * vel['W'][1] + eta * grads['W'][1]
+    vel['b'][1] = gamma * vel['b'][1] + eta * grads['b'][1]
+
+    # update parameters
+    trained_net['W'][0] -= vel['W'][0]
+    trained_net['b'][0] -= vel['b'][0]
+    trained_net['W'][1] -= vel['W'][1]
+    trained_net['b'][1] -= vel['b'][1]
+
+    return trained_net, vel

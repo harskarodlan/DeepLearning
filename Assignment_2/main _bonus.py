@@ -60,8 +60,8 @@ data = {'trainX': trainX, 'trainY': trainY, 'trainy': trainy,
         'validX': validX, 'validY': validY, 'validy': validy}
 
 
-# -------------------------- Final training ----------------------
-#"""
+# -------------------------- Non Nesterov ----------------------
+"""
 
 lam_best = 0.00199526
 
@@ -70,7 +70,7 @@ n_batch = 100
 n_s = 2 * floor(n / n_batch)
 eta_min = 1e-5
 eta_max = 1e-1
-n_cycles = 3
+n_cycles = 1
 
 GDparams = {
     'n_batch': n_batch,
@@ -104,4 +104,50 @@ print(f"Validation accuracy: {100 * val_acc:.2f}%")
 print(f"Test accuracy:       {100 * test_acc:.2f}%")
 
 
-#"""
+"""
+
+# ----------------------- Nesterov --------------------
+
+
+lam_best = 0.00199526
+
+m = 100
+n_batch = 100
+n_s = 2 * floor(n / n_batch)
+eta_max = 2e-2
+eta_min = 1e-4
+n_cycles = 3
+gamma = 0.9
+
+GDparams = {
+    'n_batch': n_batch,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles,
+    'gamma': gamma
+
+}
+
+
+net = InitializeNet(d, m, K)
+
+trained_net, history = MiniBatchGDNesterov(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam_best, seed=42, p_keep=0.9
+)
+
+P_train = ApplyNetwork(trainX, trained_net)['P']
+train_acc = ComputeAccuracy(P_train, trainy)
+
+P_val = ApplyNetwork(validX, trained_net)['P']
+val_acc = ComputeAccuracy(P_val, validy)
+
+P_test = ApplyNetwork(testX, trained_net)['P']
+test_acc = ComputeAccuracy(P_test, testy)
+
+print(f"Best lambda: {lam_best:.8f}")
+print(f"Training accuracy:   {100 * train_acc:.2f}%")
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+print(f"Test accuracy:       {100 * test_acc:.2f}%")
