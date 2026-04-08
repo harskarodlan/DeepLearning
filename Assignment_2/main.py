@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 import copy
 import matplotlib.pyplot as plt
+from math import floor
 
 from torch_gradient_computations import ComputeGradsWithTorch
 
@@ -24,7 +25,7 @@ cifar_dir = '../Datasets/cifar-10-batches-py/'
 
 # --------- For all batches
 #"""
-n_val = 5000
+n_val = 1000
 
 X, Y, y = LoadAll(cifar_dir)
 trainX = X[:, n_val:]
@@ -54,6 +55,9 @@ trainX = NormalizeData(trainX, mean_X, std_X)
 validX = NormalizeData(validX, mean_X, std_X)
 testX = NormalizeData(testX, mean_X, std_X)
 
+
+data = {'trainX': trainX, 'trainY': trainY, 'trainy': trainy,
+        'validX': validX, 'validY': validY, 'validy': validy}
 
 # -------- Initialization test -----------------------------------------
 """
@@ -87,7 +91,6 @@ print("s shape:", fp_data['S'].shape)      # (10, 5)
 
 
 # ------------ Test with PyTorch
-
 """
 
 d_small = 5
@@ -236,7 +239,7 @@ GDparams = {
 trained_net, history = MiniBatchGD(
     trainX, trainY, trainy,
     validX, validY, validy,
-    GDparams, net, lam, n_rec=9, seed=42
+    GDparams, net, lam, seed=42, n_rec=9
 )
 
 
@@ -252,4 +255,113 @@ PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
 """
 
 
-# ----------------- Coarse lambda search
+# ----------------- Lambda search --------------------
+"""
+
+m = 50
+n_batch = 100
+n_s = 2 * floor(n / n_batch)
+eta_min = 1e-5
+eta_max = 1e-1
+n_cycles = 3
+
+GDparams = {
+    'n_batch': n_batch,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles
+}
+
+"""
+
+
+# ----------------- Coarse 
+"""
+
+# get a uniform (log) grid of 8 lambda values
+lambda_values = np.logspace(-5, -1, 8)
+
+results = LambdaSearch(lambda_values, data, d ,m, K, GDparams)
+
+print("\nCoarse lambda search results: ")
+PrintResults(results)
+SaveResults(results, "coarse_lamda_search.txt")
+
+# Gives best lambda as:
+# lambda = 0.00013895,  best_val_acc = 0.5292
+
+"""
+
+
+# ---------------- Fine
+"""
+
+# get a uniform (log) grid of 8 lambda values
+lambda_values = np.logspace(-4, -2.7, 10)
+
+results = LambdaSearch(lambda_values, data, d ,m, K, GDparams)
+
+print("\nFine lambda search results: ")
+PrintResults(results)
+SaveResults(results, "fine_lamda_search.txt")
+
+# Gives best lambda as:
+# lambda=0.00199526, best_val_acc=0.532400
+
+"""
+
+
+# -------------------------- Final training ----------------------
+#"""
+
+lam_best = 0.00199526
+
+m = 50
+n_batch = 100
+n_s = 2 * floor(n / n_batch)
+eta_min = 1e-5
+eta_max = 1e-1
+n_cycles = 3
+
+GDparams = {
+    'n_batch': n_batch,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles
+}
+
+
+net = InitializeNet(d, m, K)
+
+trained_net, history = MiniBatchGD(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam_best, seed=42
+)
+
+P_train = ApplyNetwork(trainX, trained_net)['P']
+train_acc = ComputeAccuracy(P_train, trainy)
+
+P_val = ApplyNetwork(validX, trained_net)['P']
+val_acc = ComputeAccuracy(P_val, validy)
+
+P_test = ApplyNetwork(testX, trained_net)['P']
+test_acc = ComputeAccuracy(P_test, testy)
+
+print(f"Best lambda: {lam_best:.8f}")
+print(f"Training accuracy:   {100 * train_acc:.2f}%")
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+print(f"Test accuracy:       {100 * test_acc:.2f}%")
+
+PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
+                title='Cost plot', ylabel='cost', file_name='final_cost')
+
+PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
+                title='Loss plot', ylabel='loss', file_name='final_loss')
+
+PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
+                title='Accuracy plot', ylabel='accuracy', file_name='final_acc')
+
+#"""

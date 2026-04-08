@@ -1,0 +1,10 @@
+lambda=0.00199526, best_val_acc=0.532400, best_train_acc=0.599356
+lambda=0.00052750, best_val_acc=0.531400, best_train_acc=0.612711
+lambda=0.00073564, best_val_acc=0.529000, best_train_acc=0.609911
+lambda=0.00010000, best_val_acc=0.528400, best_train_acc=0.614911
+lambda=0.00019449, best_val_acc=0.527800, best_train_acc=0.612333
+lambda=0.00143072, best_val_acc=0.527800, best_train_acc=0.606156
+lambda=0.00102591, best_val_acc=0.527600, best_train_acc=0.608600
+lambda=0.00037825, best_val_acc=0.527000, best_train_acc=0.613133
+lambda=0.00013946, best_val_acc=0.524000, best_train_acc=0.615422
+lambda=0.00027123, best_val_acc=0.523600, best_train_acc=0.614733

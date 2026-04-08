@@ -173,7 +173,7 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
 
 
-def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, n_rec=10, seed=None):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None, n_rec=10):
     """
     Performs mini-batch gradient descent to train network parameters.
 
@@ -196,8 +196,8 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, n_rec=10
                  network['W'][1] = W2, shape (K, m)
                  network['b'][1] = b2, shape (K, 1)
         lam: regularization coefficient lambda
-        n_rec: num times per cycle performance is recorded
         seed: random generator seed for shuffling
+        n_rec: num times per cycle performance is recorded
     Returns:
         trained_net: dict of trained network parameters
         history: dict of performance statistics for each epoch, keys
@@ -326,6 +326,9 @@ def CyclicEta(t, eta_min, eta_max, n_s):
 
 
 def RecordHistory(X, y, X_val, y_val, net, lam, eta, t, history):
+    """
+        Appends current performance statistics to history.
+    """
     P_train = ApplyNetwork(X, net)['P']
     P_val = ApplyNetwork(X_val, net)['P']
 
@@ -343,6 +346,9 @@ def RecordHistory(X, y, X_val, y_val, net, lam, eta, t, history):
 
 
 def PrintProgress(t, eta, history):
+    """
+        Prints current performance statistics.
+    """
     print(f"step {t}: eta = {eta:.6f}, "
             f"train loss = {history['train_loss'][-1]:.6f}, "
             f"train cost = {history['train_cost'][-1]:.6f}, "
@@ -350,3 +356,54 @@ def PrintProgress(t, eta, history):
             f"val loss = {history['val_loss'][-1]:.6f}, "
             f"val cost = {history['val_cost'][-1]:.6f}, "
             f"val acc = {history['val_acc'][-1]:.4f}")
+    
+
+
+def LambdaSearch(lamdas, data, d, m, K, GDparams):
+
+    results = []
+
+    for lam in lamdas:
+        print(f"\nTraining with lambda = {lam:.8f}")
+
+        init_net = InitializeNet(d, m, K)
+
+        trained_net, history = MiniBatchGD(
+            data['trainX'], data['trainY'], data['trainy'],
+            data['validX'], data['validY'], data['validy'],
+            GDparams, init_net, lam, seed=42
+        )
+
+        best_val_acc = np.max(history['val_acc'])
+        best_train_acc = np.max(history['train_acc'])
+
+        results.append({
+            'lam': lam,
+            'best_val_acc': best_val_acc,
+            'best_train_acc': best_train_acc
+        })
+
+        print(f"best val acc  = {best_val_acc:.4f}")
+    
+    results = sorted(results, key=lambda res: res['best_val_acc'], reverse=True)
+
+    return results
+
+
+def PrintResults(results):
+    for res in results:
+        print(f"lambda = {res['lam']:.8f}, ", 
+              f"best_val_acc = {res['best_val_acc']:.4f}, ", 
+              f"best_train_acc = {res['best_train_acc']:.4f}")
+
+
+def SaveResults(results, file_name):
+    with open('./results/' + file_name, "w") as f:
+        for res in results:
+            f.write(f"lambda={res['lam']:.8f}, "
+                f"best_val_acc={res['best_val_acc']:.6f}, "
+                f"best_train_acc={res['best_train_acc']:.6f}\n"
+            )
+
+
+
