@@ -23,7 +23,7 @@ def Softmax(S):
     return P
 
 
-def ApplyNetwork(X, network):
+def ApplyNetwork(X, network, training=False, p_keep=1.0, rng=None):
     """
     Forwards pass.
 
@@ -34,6 +34,9 @@ def ApplyNetwork(X, network):
                  network['b'][0] = b1, shape (m, 1)
                  network['W'][1] = W2, shape (K, m)
                  network['b'][1] = b2, shape (K, 1)
+        training: True when training
+        p_keep: probability of not dropping a hidden activation
+        rng: random generator for dropout
 
     Returns:
         fp_data: intermediary forward-pass values, dict with keys
@@ -41,7 +44,8 @@ def ApplyNetwork(X, network):
                  H - (m, n)
                  S - (K, n)
                  P - (K, n) : probability for each class for each image
-                 
+                 U - (m, n) : 1 if node kept, 0 if node dropped out 
+                              (in hidden layer for each image)
     """
 
     W1 = network['W'][0]
@@ -53,10 +57,17 @@ def ApplyNetwork(X, network):
 
     S1 = W1 @ X + b1    # (m, n)
     H = ReLU(S1)        # (m, n)
+
+    U = None
+    # DropOut
+    if training and p_keep < 1.0:
+        U = (rng.random(H.shape) < p_keep) / p_keep
+        H = H * U
+
     S = W2 @ H + b2     # (K, n)
     P = Softmax(S)      # (K, n)
 
-    fp_data = {'S1': S1, 'H': H, 'S': S, 'P': P}
+    fp_data = {'S1': S1, 'H': H, 'S': S, 'P': P, 'U': U}
 
     return fp_data
 
@@ -143,6 +154,8 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
     H = fp_data['H']      # (m, n)
     P = fp_data['P']      # (K, n)
+    U = fp_data['U']      # (m, n)
+    S1 = fp_data['S1']    # (m, n)
 
     # Follow procedure from lecture 4, slide 34-37:
 
@@ -156,8 +169,16 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
     # step 3: backprop gradient through 2nd layer
     G = W2.T @ G                                    # (m, n)
-    # G = G*ind(H>0)
-    G = G * (H > 0)                                 # (m, n)
+
+    # if used dropout in forward pass 
+    # backprop through dropout mask
+    if U is not None:
+        G = G * U
+        
+    # OBS: with dropout ind(H>0) != ind(S1>0)
+    # ReLU uses S1, so use ind(S1>0) instead
+    # G = G*ind(S1>0)
+    G = G * (S1 > 0)                                 # (m, n)
 
     # step 4: Add gradient of l wrt b1 & W1
     dJdW1 = (G @ X.T) / n + 2*lam*W1                # (m, d)
@@ -173,7 +194,8 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
 
 
-def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=None, n_rec=10, flip=False):
+def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam,
+                 seed=None, n_rec=10, flip=False, p_keep=1.0):
     """
     Performs mini-batch gradient descent to train network parameters.
 
@@ -199,6 +221,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
         seed: random generator seed for shuffling
         n_rec: num times per cycle performance is recorded
         flip: if True, training data is flipped w/ 50% chance
+        p_keep: probability of not dropping a hidden activation
     Returns:
         trained_net: dict of trained network parameters
         history: dict of performance statistics for each epoch, keys
@@ -268,7 +291,7 @@ def MiniBatchGD(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam, seed=Non
             eta = CyclicEta(t, eta_min, eta_max, n_s)
 
             # apply mini batch
-            fp_data = ApplyNetwork(X_batch, trained_net)
+            fp_data = ApplyNetwork(X_batch, trained_net, training=True, p_keep=p_keep, rng=local_rng)
             # backprop mini batch
             grads = BackwardPass(X_batch, Y_batch, fp_data, trained_net, lam)
 

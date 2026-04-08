@@ -70,7 +70,7 @@ n_batch = 100
 n_s = 2 * floor(n / n_batch)
 eta_min = 1e-5
 eta_max = 1e-1
-n_cycles = 1
+n_cycles = 3
 
 GDparams = {
     'n_batch': n_batch,
@@ -86,7 +86,7 @@ net = InitializeNet(d, m, K)
 trained_net, history = MiniBatchGD(
     trainX, trainY, trainy,
     validX, validY, validy,
-    GDparams, net, lam_best, seed=42
+    GDparams, net, lam_best, seed=42, p_keep=1.0
 )
 
 P_train = ApplyNetwork(trainX, trained_net)['P']
