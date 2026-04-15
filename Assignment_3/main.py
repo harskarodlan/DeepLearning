@@ -1,0 +1,367 @@
+import numpy as np
+import pickle
+import copy
+import matplotlib.pyplot as plt
+from math import floor
+
+from torch_gradient_computations import ComputeGradsWithTorch
+
+from ann import *
+from data_handling import *
+from plotting import *
+from ann_sigmoid import *
+
+
+# ------- Load data ----------------------------------------------------
+
+cifar_dir = '../Datasets/cifar-10-batches-py/'
+
+
+# --------- For 1 batch
+
+#trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
+#validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
+
+
+# --------- For all batches
+#"""
+n_val = 1000
+
+X, Y, y = LoadAll(cifar_dir)
+trainX = X[:, n_val:]
+trainY = Y[:, n_val:]
+trainy = y[n_val:]
+validX = X[:, :n_val]
+validY = Y[:, :n_val]
+validy = y[:n_val]
+
+#"""
+
+# ---------
+
+testX, testY, testy = LoadBatch(cifar_dir +  'test_batch')
+
+d = trainX.shape[0]
+n = trainX.shape[1]
+K = trainY.shape[0]
+
+
+# ------- Normalize data ------------------------------------------------
+
+mean_X = np.mean(trainX, axis=1).reshape(d, 1)
+std_X = np.std(trainX, axis=1).reshape(d, 1)
+
+trainX = NormalizeData(trainX, mean_X, std_X)
+validX = NormalizeData(validX, mean_X, std_X)
+testX = NormalizeData(testX, mean_X, std_X)
+
+
+data = {'trainX': trainX, 'trainY': trainY, 'trainy': trainy,
+        'validX': validX, 'validY': validY, 'validy': validy}
+
+# -------- Initialization test -----------------------------------------
+"""
+
+m = 50
+
+net = InitializeNet(d, m, K)
+
+print(trainX.shape, trainY.shape, trainy.shape)
+print(net['W'][0].shape, net['b'][0].shape)
+print(net['W'][1].shape, net['b'][1].shape)
+
+"""
+
+
+# ---------- Forward pass test -----------------------------------------
+"""
+
+X_small = trainX[:, 0:5]
+fp_data = ApplyNetwork(X_small, net)
+
+print("P shape:", fp_data['P'].shape)                 # (10, 5)
+print("s1 shape:", fp_data['S1'].shape)    # (50, 5)
+print("h shape:", fp_data['H'].shape)      # (50, 5)
+print("s shape:", fp_data['S'].shape)      # (10, 5)
+
+"""
+
+
+# --------- Backward pass test ----------------------------------------
+
+
+# ------------ Test with PyTorch
+"""
+
+d_small = 5
+n_small = 3
+m = 6
+lam = 0
+small_net = InitializeNet(d_small, m, K)
+
+
+X_small = trainX[0:d_small, 0:n_small]
+Y_small = trainY[:, 0:n_small]
+fp_data = ApplyNetwork(X_small, small_net)
+my_grads = BackwardPass(X_small, Y_small, fp_data, small_net, lam)
+
+torch_grads = ComputeGradsWithTorch(X_small, trainy[0:n_small], small_net)
+
+# Print comparison error between analytic and PyTorch gradients
+for layer in range(len(my_grads['W'])):
+    abs_diff_W = np.max(np.abs(my_grads['W'][layer] - torch_grads['W'][layer]))
+    abs_diff_b = np.max(np.abs(my_grads['b'][layer] - torch_grads['b'][layer]))
+
+    rel_diff_W = abs_diff_W / np.maximum(
+        1e-12,
+        np.max(np.abs(my_grads['W'][layer]) + np.abs(torch_grads['W'][layer]))
+    )
+    rel_diff_b = abs_diff_b / np.maximum(
+        1e-12,
+        np.max(np.abs(my_grads['b'][layer]) + np.abs(torch_grads['b'][layer]))
+    )
+
+    print(f"Layer {layer+1}")
+    print(f"  W max abs diff: {abs_diff_W:.10e}")
+    print(f"  W max rel diff: {rel_diff_W:.10e}")
+    print(f"  b max abs diff: {abs_diff_b:.10e}")
+    print(f"  b max rel diff: {rel_diff_b:.10e}")
+
+"""
+
+
+# ---------- Test overfitting 
+"""
+
+m = 50
+lam = 0
+small_net = InitializeNet(d, m, K)
+
+X_tiny = trainX[:, :100]
+Y_tiny = trainY[:, :100]
+y_tiny = trainy[:100]
+
+X_tiny_val = validX[:, :100]
+Y_tiny_val = validY[:, :100]
+y_tiny_val = validy[:100]
+
+
+GDparams = {'n_batch': 10, 'eta': 0.01, 'n_epochs': 200}
+
+trained_net, history = MiniBatchGD(X_tiny, Y_tiny, y_tiny,
+                                X_tiny_val, Y_tiny_val, y_tiny_val,
+                                GDparams, small_net, lam, seed=42)
+
+# training accuracy
+P_train = ApplyNetwork(X_tiny, trained_net)['P']
+train_acc = ComputeAccuracy(P_train, y_tiny)
+print(f"Training accuracy: {100 * train_acc:.2f}%")
+
+# validation accuracy
+P_val = ApplyNetwork(X_tiny_val, trained_net)['P']
+val_acc = ComputeAccuracy(P_val, y_tiny_val)
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+
+"""
+
+# .................. Exercise 3: cyclic GD ------------------------
+"""
+
+m = 50
+lam = 0.01
+
+net = InitializeNet(d, m, K)
+
+eta_min = 1e-5
+eta_max = 1e-1
+n_s = 500
+n_cycles = 1
+
+GDparams = {'n_batch': 100, 'eta_min': eta_min, 'eta_max': eta_max,
+             'n_s': n_s, 'n_cycles': n_cycles}
+
+
+trained_net, history = MiniBatchGD(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam, seed=42
+)
+
+
+# ............. Plot eta
+
+plt.figure()
+plt.plot(history['step'], history['eta'])
+plt.xlabel('update step')
+plt.ylabel('eta')
+plt.title('Cyclic learning rate')
+plt.grid(True)
+plt.show()
+
+
+# ............ Plot performance
+
+PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
+                title='Cost plot', ylabel='cost', file_name='ex3_cost')
+
+PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
+                title='Loss plot', ylabel='loss', file_name='ex3_loss')
+
+PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
+                title='Accuracy plot', ylabel='accuracy', file_name='ex3_acc')
+
+"""
+
+
+# -------------------- Exercise 4 ------------------
+
+# --------------- Proper run
+"""
+
+m = 50
+lam = 0.01
+
+net = InitializeNet(d, m, K)
+
+eta_min = 1e-5
+eta_max = 1e-1
+n_s = 800
+n_cycles = 3
+
+GDparams = {
+    'n_batch': 100,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles
+}
+
+trained_net, history = MiniBatchGD(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam, seed=42, n_rec=9
+)
+
+
+PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
+                title='Cost plot', ylabel='cost', file_name='fig4_cost')
+
+PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
+                title='Loss plot', ylabel='loss', file_name='fig4_loss')
+
+PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
+                title='Accuracy plot', ylabel='accuracy', file_name='fig4_acc')
+
+"""
+
+
+# ----------------- Lambda search --------------------
+"""
+
+m = 50
+n_batch = 100
+n_s = 2 * floor(n / n_batch)
+eta_min = 1e-5
+eta_max = 1e-1
+n_cycles = 3
+
+GDparams = {
+    'n_batch': n_batch,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles
+}
+
+"""
+
+
+# ----------------- Coarse 
+"""
+
+# get a uniform (log) grid of 8 lambda values
+lambda_values = np.logspace(-5, -1, 8)
+
+results = LambdaSearch(lambda_values, data, d ,m, K, GDparams)
+
+print("\nCoarse lambda search results: ")
+PrintResults(results)
+SaveResults(results, "coarse_lamda_search.txt")
+
+# Gives best lambda as:
+# lambda = 0.00013895,  best_val_acc = 0.5292
+
+"""
+
+
+# ---------------- Fine
+"""
+
+# get a uniform (log) grid of 8 lambda values
+lambda_values = np.logspace(-4, -2.7, 10)
+
+results = LambdaSearch(lambda_values, data, d ,m, K, GDparams)
+
+print("\nFine lambda search results: ")
+PrintResults(results)
+SaveResults(results, "fine_lamda_search.txt")
+
+# Gives best lambda as:
+# lambda=0.00199526, best_val_acc=0.532400
+
+"""
+
+
+# -------------------------- Final training ----------------------
+#"""
+
+lam_best = 0.00199526
+
+m = 100
+n_batch = 100
+n_s = 2 * floor(n / n_batch)
+eta_min = 1e-5
+eta_max = 1e-1
+n_cycles = 3
+
+GDparams = {
+    'n_batch': n_batch,
+    'eta_min': eta_min,
+    'eta_max': eta_max,
+    'n_s': n_s,
+    'n_cycles': n_cycles
+}
+
+
+net = InitializeNet(d, m, K)
+
+trained_net, history = MiniBatchGD(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam_best, seed=42
+)
+
+P_train = ApplyNetwork(trainX, trained_net)['P']
+train_acc = ComputeAccuracy(P_train, trainy)
+
+P_val = ApplyNetwork(validX, trained_net)['P']
+val_acc = ComputeAccuracy(P_val, validy)
+
+P_test = ApplyNetwork(testX, trained_net)['P']
+test_acc = ComputeAccuracy(P_test, testy)
+
+print(f"Best lambda: {lam_best:.8f}")
+print(f"Training accuracy:   {100 * train_acc:.2f}%")
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+print(f"Test accuracy:       {100 * test_acc:.2f}%")
+
+PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
+                title='Cost plot', ylabel='cost', file_name='final_cost')
+
+PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
+                title='Loss plot', ylabel='loss', file_name='final_loss')
+
+PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
+                title='Accuracy plot', ylabel='accuracy', file_name='final_acc')
+
+#"""
