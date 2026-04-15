@@ -19,12 +19,12 @@ cifar_dir = '../Datasets/cifar-10-batches-py/'
 
 # --------- For 1 batch
 
-trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
-validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
+#trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
+#validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
 
 
 # --------- For all batches
-"""
+#"""
 n_val = 1000
 
 X, Y, y = LoadAll(cifar_dir)
@@ -35,7 +35,7 @@ validX = X[:, :n_val]
 validY = Y[:, :n_val]
 validy = y[:n_val]
 
-"""
+#"""
 
 # ---------
 
@@ -107,7 +107,7 @@ print(f"Test accuracy:       {100 * test_acc:.2f}%")
 """
 
 # ----------------------- Nesterov --------------------
-
+"""
 
 lam_best = 0.00199526
 
@@ -151,3 +151,62 @@ print(f"Best lambda: {lam_best:.8f}")
 print(f"Training accuracy:   {100 * train_acc:.2f}%")
 print(f"Validation accuracy: {100 * val_acc:.2f}%")
 print(f"Test accuracy:       {100 * test_acc:.2f}%")
+
+"""
+
+
+
+# ----------------------- Adam --------------------
+#"""
+
+lam_best = 0.00199526
+
+lam = lam_best
+
+m = 100
+n_batch = 100
+n_s = 2 * floor(n / n_batch)
+n_cycles = 4
+
+eta = 1e-4
+
+beta1 = 0.9
+beta2 = 0.999
+eps = 1e-8
+
+
+
+GDparams = {
+    'n_batch': n_batch,
+    'n_s': n_s,
+    'n_cycles': n_cycles,
+    'eta': eta,
+    'beta1': beta1,
+    'beta2': beta2,
+    'eps': eps,
+}
+
+
+net = InitializeNet(d, m, K)
+
+trained_net, history = MiniBatchGDAdam(
+    trainX, trainY, trainy,
+    validX, validY, validy,
+    GDparams, net, lam, seed=42, n_rec=1, flip=True
+)
+
+P_train = ApplyNetwork(trainX, trained_net)['P']
+train_acc = ComputeAccuracy(P_train, trainy)
+
+P_val = ApplyNetwork(validX, trained_net)['P']
+val_acc = ComputeAccuracy(P_val, validy)
+
+P_test = ApplyNetwork(testX, trained_net)['P']
+test_acc = ComputeAccuracy(P_test, testy)
+
+print(f"Best lambda: {lam_best:.8f}")
+print(f"Training accuracy:   {100 * train_acc:.2f}%")
+print(f"Validation accuracy: {100 * val_acc:.2f}%")
+print(f"Test accuracy:       {100 * test_acc:.2f}%")
+
+#"""

@@ -317,7 +317,7 @@ SaveResults(results, "fine_lamda_search.txt")
 
 lam_best = 0.00199526
 
-m = 50
+m = 100
 n_batch = 100
 n_s = 2 * floor(n / n_batch)
 eta_min = 1e-5

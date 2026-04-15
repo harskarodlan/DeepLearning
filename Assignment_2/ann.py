@@ -509,6 +509,7 @@ def MiniBatchGDNesterov(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam,
 
     t = 0
     t_end = 2 * n_s * n_cycles
+    print(t_end)
 
     record_rate = (2 * n_s) // n_rec
 
@@ -617,3 +618,165 @@ def NesterovStep(X_batch, Y_batch, trained_net, vel, eta, gamma, lam,
     trained_net['b'][1] -= vel['b'][1]
 
     return trained_net, vel
+
+
+
+
+def MiniBatchGDAdam(X, Y, y,  X_val, Y_val, y_val, GDparams, init_net, lam,
+                 seed=None, n_rec=10, flip=False, p_keep=1.0):
+    """
+    Performs mini-batch gradient descent to train network parameters.
+
+    Args:
+        X: image data for training, (d, n)
+        Y: one-hot encoded image labels for training, (K, n)
+        y: integer (int64) image labels for training, (n, )
+        X_val: image data for validation, (d, nt)
+        Y_val: one-hot encoded image labels for validation, (K, n)
+        y_val: integer (int64) image labels for validation, (n, )
+        GDparams: dict of GD parameter values, keys
+                  'n_batch' - mini batch size
+                  'eta_min' - minimum learning rate of cycle
+                  'eta_max' - maximum learning rate of cycle
+                  'n_s' - stepsize
+                  'n_cycles' - num of cycles
+                  'beta1'    - Adam beta1
+                  'beta2'    - Adam beta2
+                  'eps'      - Adam epsilon
+        init_net: initial network parameters, dict with  
+                 network['W'][0] = W1, shape (m, d)
+                 network['b'][0] = b1, shape (m, 1)
+                 network['W'][1] = W2, shape (K, m)
+                 network['b'][1] = b2, shape (K, 1)
+        lam: regularization coefficient lambda
+        seed: random generator seed for shuffling
+        n_rec: num times per cycle performance is recorded
+        flip: if True, training data is flipped w/ 50% chance
+        p_keep: probability of not dropping a hidden activation
+    Returns:
+        trained_net: dict of trained network parameters
+        history: dict of performance statistics for each epoch, keys
+                 'train_loss' - loss after each epoch
+                 'train_cost' - cost after each epoch
+                 'train_acc' - accuracy after each epoch
+    """
+    trained_net = copy.deepcopy(init_net)
+
+    n_batch = GDparams['n_batch']
+    n_s = GDparams['n_s']
+    n_cycles = GDparams['n_cycles']
+    eta = GDparams['eta']
+
+    n = X.shape[1]
+
+    t = 0
+    t_end = 2 * n_s * n_cycles
+    
+    record_rate = (2 * n_s) // n_rec
+
+    history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
+                'val_loss': [], 'val_cost': [], 'val_acc': [],
+                'eta': [], 'step': []}
+    
+    # Adam means and variances
+    adam = {}
+    # initialize to zero
+    adam['m'] = {'W': [np.zeros_like(W) for W in trained_net['W']],
+                 'b': [np.zeros_like(b) for b in trained_net['b']]}
+    adam['v'] = {'W': [np.zeros_like(W) for W in trained_net['W']],
+                 'b': [np.zeros_like(b) for b in trained_net['b']]}
+
+    # reset rng for each GD
+    if seed is not None:
+        local_rng = np.random.default_rng(seed)
+    else:
+        local_rng = None
+
+    # get data indices for flipping image
+    if flip:
+        inds_flip = GetFlipIndices()
+
+    # run until all steps done
+    while t <= t_end:
+        # shuffle dataset before each epoch
+        if seed is not None:
+            perm = local_rng.permutation(n)
+            X_epoch = X[:, perm]
+            Y_epoch = Y[:, perm]
+        else:
+            X_epoch = X
+            Y_epoch = Y
+
+        for j in range(n//n_batch): # go through mini-batches
+            if t > t_end:
+                break
+
+            # mini batch indices
+            j_start = j*n_batch
+            j_end = (j+1)*n_batch
+
+            if flip:
+                X_batch = X_epoch[:, j_start:j_end].copy()  # copy for flipping
+            else:
+                X_batch = X_epoch[:, j_start:j_end]
+            Y_batch = Y_epoch[:, j_start:j_end]
+
+            # flip each image with 0.5 chance
+            if flip and local_rng is not None:
+                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
+                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
+
+            trained_net, adam = AdamStep(X_batch, Y_batch, trained_net, adam, t+1,
+                                         GDparams, lam, p_keep=p_keep, rng=local_rng)
+
+            if t % record_rate == 0:
+                RecordHistory(X, y, X_val, y_val, trained_net, lam, eta, t, history)
+                PrintProgress(t, eta, history)
+
+            t += 1
+
+    return trained_net, history
+
+
+
+def AdamStep(X, Y, net, adam, t, GDparams, lam, p_keep=1.0, rng=None):
+    """
+    Performs one Adam parameter update step.
+    """
+    eta = GDparams['eta']
+    beta1 = GDparams['beta1']
+    beta2 = GDparams['beta2']
+    eps = GDparams['eps']
+
+    # Adam update algorithm from lecture 5, slide 49:
+    # let x(t) be network parameters (net) at time t 
+    # get gradient gt of output wrt x(t)
+    fp_data = ApplyNetwork(X, net, training=True, p_keep=p_keep, rng=rng)
+    gt = BackwardPass(X, Y, fp_data, net, lam)
+
+    # for each layer
+    for i in range(len(net['W'])):
+        # update means m
+        # m(t+1) = beta1 * m(t) + (1-beta1)*gt
+        adam['m']['W'][i] = beta1 * adam['m']['W'][i] + (1 - beta1) * gt['W'][i]
+        adam['m']['b'][i] = beta1 * adam['m']['b'][i] + (1 - beta1) * gt['b'][i]
+
+        # update variances v
+        # v(t+1) = beta2 * v(t) + (1-beta2)*gt .* gt
+        adam['v']['W'][i] = beta2 * adam['v']['W'][i] + (1 - beta2) * (gt['W'][i]**2)
+        adam['v']['b'][i] = beta2 * adam['v']['b'][i] + (1 - beta2) * (gt['b'][i]**2)
+
+        # bias correction
+        # m_hat(t+1) = m(t+1)/(1-beta1^t)
+        m_hat_W = adam['m']['W'][i]/(1 - beta1**t)
+        m_hat_b = adam['m']['b'][i]/(1 - beta1**t)
+        # v_hat(t+1) = v(t+1)/(1-beta2^t)
+        v_hat_W = adam['v']['W'][i]/(1 - beta2**t)
+        v_hat_b = adam['v']['b'][i]/(1 - beta2**t)
+
+        # update parameters
+        # x(t+1) = x(t) - eta/(sqrt(v_hat(t+1) + e) * m_hat(t+1)
+        net['W'][i] -= eta * m_hat_W / (np.sqrt(v_hat_W)+ eps)
+        net['b'][i] -= eta * m_hat_b / (np.sqrt(v_hat_b)+ eps)
+
+    return net, adam
