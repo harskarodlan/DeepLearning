@@ -86,3 +86,27 @@ def NormalizeData(data, mean, std):
 
 
 
+
+def LoadDebugData():
+    """
+    Loads debugging data.
+
+    Returns:
+        X_ims: image data (32, 32, 3, n) = (32, 32, 3, 5)
+        Fs: filters (f, f, 3, nf) = (4, 4, 3, 2)
+        conv_out: correct convolution result
+                  (32/f, 32/f, nf, n) = (8, 8, 2, 5)
+    """
+    debug_file = 'debug_info.npz'
+    load_data = np.load(debug_file)
+    X = load_data['X']
+    Fs = load_data['Fs']
+    conv_out = load_data['conv_outputs']
+
+    n = X.shape[1]
+
+    X_ims = np.transpose(X.reshape((32, 32, 3, n), order='F'), (1, 0, 2, 3))
+
+    return X_ims, Fs, conv_out
+
+
