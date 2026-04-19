@@ -53,3 +53,14 @@ print("X1 diff: ",
 print("P diff: ",
       np.max(np.abs(fp_data['P'] - debug_data['P'])))
 
+
+# ----------- Backward Pass
+
+Y = debug_data['Y']
+
+grads = BackwardConv(MX, Y, fp_data, debug_network, lam=0)
+
+print("grads_Fs_flat diff: ",
+      np.max(np.abs(grads['Fs_flat'] - debug_data['grad_Fs_flat'])))
+
+

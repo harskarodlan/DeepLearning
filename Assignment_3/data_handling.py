@@ -106,3 +106,8 @@ def LoadDebugData():
     return X_ims, debug_data
 
 
+def SaveMX(MX, filename):
+    np.save('./matrices/'+filename, MX)
+
+def LoadMX(filename):
+    return np.load('./matrices/'+filename)

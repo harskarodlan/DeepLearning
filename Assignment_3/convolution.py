@@ -1,6 +1,6 @@
 import numpy as np
 
-from ann import Softmax
+from ann import Softmax, ComputeLoss
 
 def SlowConv(X_ims, Fs):
     """
@@ -76,6 +76,10 @@ def BuildMX(X_ims, f):
 
     return MX
 
+def MXFromX(X, f):
+    n = X.shape[1]
+    X_ims = np.transpose(X.reshape((32, 32, 3, n), order='F'), (1, 0, 2, 3))
+    return BuildMX(X_ims, f).astype(np.float32)
 
 
 def FlattenFilters(Fs):
@@ -127,6 +131,7 @@ def ForwardConv(MX, network):
             network['b'][1] = b2 - (10, 1)
     Returns:
         fp_data: dict of intermediate forward-pass values, with
+            fp_data['conv_outputs_mat']
             fp_data['conv_flat']
             fp_data['S1']
             fp_data['X1]
@@ -158,7 +163,145 @@ def ForwardConv(MX, network):
     S = W2 @ X1 + b2     # (10, n)
     P = Softmax(S)       # (10, n)
 
-    fp_data = {'conv_flat': conv_flat, 'S1': S1, 'X1': X1,
-                'S': S, 'P': P}
+    fp_data = {'conv_outputs_mat': conv_outputs_mat, 'conv_flat': conv_flat,
+                'S1': S1, 'X1': X1, 'S': S, 'P': P}
     
     return fp_data
+
+
+
+
+def BackwardConv(MX, Y, fp_data, network, lam=0):
+    """
+    Computes gradients of cost wrt weights W, biases b, filters Fall.
+
+    Args:
+        MX: image data convoluton matrix, (n_p, f*f*3, n)
+        Y: one-hot encoded image labels, (K, n)
+        fp_data: dict of intermediete forward pass values
+        network: dict of network parameters, with
+            network['Fs_flat'] = flattened filter for 1st layer
+                                 (f*f*3, nf)
+            network['W'][0] = W1 - (nh, n_p*nf)
+            network['b'][0] = b1 - (nh, 1)
+            network['W'][1] = W2 - (10, nh)
+            network['b'][1] = b2 - (10, 1)
+        lam: regularizataion coefficient lambda
+    Returns:
+        grads: dict of gradients, with
+               grads['Fs_flat'] = dJ/dFall
+               grads['W'][i] = dJ/dWi, (K, d)
+               grads['b'][i] = dJ/dbi, (K, 1)
+    """
+
+    W1 = network['W'][0]
+    W2 = network['W'][1]
+    Fs_flat = network['Fs_flat']
+
+    n_p, _, n = MX.shape
+    nf = Fs_flat.shape[1]
+
+    conv_flat = fp_data['conv_flat']      # (n_p*nf, n)
+    S1 = fp_data['S1']                    # (nh, n)
+    X1 = fp_data['X1']                    # (nh, n)
+    P = fp_data['P']                      # (K, n)
+
+    # Follow procedure from lecture 4, slide 34-37:
+
+    # step 1: G_batch = - (Y_batch - P_batch)
+    G = P - Y
+
+    # step 2: Add gradient of l wrt b2 & W2
+    dJdW2 = (G @ X1.T) / n + 2*lam*W2                # (K, nh)
+    # dJ/db2 = 1/nb * G * 1_nb
+    dJdb2 = np.sum(G, axis=1, keepdims=True) / n    # (K, 1)
+
+    # step 3: backprop gradient through 2nd layer
+    G = W2.T @ G                                    # (nh, n)
+    # G = G*ind(S1>0)
+    G = G * (S1 > 0)                                # (nh, n)
+
+    # step 4: Add gradient of l wrt b1 & W1
+    dJdW1 = (G @ conv_flat.T) / n + 2*lam*W1        # (nh, n_p*nf)
+    # dJ/db1 = 1/nb * G * 1_nb
+    dJdb1 = np.sum(G, axis=1, keepdims=True) / n    # (nh, 1) 
+
+    # backprop through conv_flat
+    G_batch = W1.T @ G                              # (n_p*nf, n)
+
+    # undo reshape from fp
+    GG = G_batch.reshape((n_p, nf, n), order='C')
+
+    # backprop through ReLU of conv layer
+    GG = GG * (fp_data['conv_outputs_mat'] > 0)
+
+    # gradient wrt flattened filters
+    MXt = np.transpose(MX, (1, 0, 2))
+    grad_Fs_flat = np.einsum('ijn, jln ->il', MXt, GG, optimize=True) / n
+
+    # account for regularization in filters
+    grad_Fs_flat += 2 * lam * Fs_flat
+
+    grads = {}
+    grads['Fs_flat'] = grad_Fs_flat
+    grads['W'] = [dJdW1, dJdW2]
+    grads['b'] = [dJdb1, dJdb2]
+
+    return grads
+
+
+
+
+def InitializeCNN(f, nf, nh, K, seed=42):
+  """
+  He innitialization of conv net parameters.
+
+  Args:
+    f: filter width
+    nf: num filters
+    nh: num hidden nodes
+    K: num classes
+ Returns:
+    net_params: dict of He initialized network parameters
+  """
+  rng = np.random.default_rng(seed)
+
+  n_conv = 3*f*f        # num of filter params per filter
+  n_p = (32 // f) ** 2  # num of patches
+  n_fc1 = n_p*nf        # num of weights for 1st layer
+
+  net_params = {}
+  net_params['Fs_flat'] = (
+      np.sqrt(2.0/n_conv) * rng.standard_normal((n_conv, nf), dtype=np.float32))
+
+  net_params['W'] = [None] * 2
+  net_params['b'] = [None] * 2
+
+  net_params['W'][0] = (
+      np.sqrt(2.0/n_fc1) * rng.standard_normal((nh, n_fc1), dtype=np.float32))
+  net_params['b'][0] = np.zeros((nh, 1), dtype=np.float32)
+
+  net_params['W'][1] = (
+      np.sqrt(2.0/nh) * rng.standard_normal((K, nh), dtype=np.float32))
+  net_params['b'][1] = np.zeros((K, 1), dtype=np.float32)
+
+  return net_params
+
+
+
+def ComputeCostConv(P, y, network, lam):
+    """
+    Computes cost = loss + regularization term.
+
+    Args:
+        P: probability for each class for each image, (K, n)
+        y: integer labels, (n, )
+        network:  dict of network parameters
+        lam: regularizataion coefficient lambda
+    Returns:
+        cost = loss + regularization term
+    """
+    loss = ComputeLoss(P, y)
+    reg = lam * (sum(np.sum(W ** 2) for W in network['W']) +
+          np.sum(network['Fs_flat'] ** 2))
+    return loss + reg
