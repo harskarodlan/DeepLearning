@@ -1,5 +1,6 @@
 import numpy as np
 
+from ann import Softmax
 
 def SlowConv(X_ims, Fs):
     """
@@ -104,3 +105,60 @@ def Conv(MX, Fs_flat):
     conv_outputs_mat = np.einsum('ijn, jl ->iln', MX, Fs_flat, optimize=True)
     
     return conv_outputs_mat
+
+
+def ReLU(X):
+    return np.maximum(0, X)
+
+
+
+def ForwardConv(MX, network):
+    """
+    Forward pass of assignment 3 (w/ convolution).
+
+    Args:
+        MX: image convolution matrix (n_p, f*f*3, n)
+        network: dict of network parameters, with
+            network['Fs_flat'] = flattened filter for 1st layer
+                                 (f*f*3, nf)
+            network['W'][0] = W1 - (nh, n_p*nf)
+            network['b'][0] = b1 - (nh, 1)
+            network['W'][1] = W2 - (10, nh)
+            network['b'][1] = b2 - (10, 1)
+    Returns:
+        fp_data: dict of intermediate forward-pass values, with
+            fp_data['conv_flat']
+            fp_data['S1']
+            fp_data['X1]
+            fp_data['S']
+            fp_data['P]
+    """
+
+    W1 = network['W'][0]
+    b1 = network['b'][0]
+    W2 = network['W'][1]
+    b2 = network['b'][1]
+    Fs_flat = network['Fs_flat']
+
+    n_p, _, n = MX.shape
+    nf = Fs_flat.shape[1]
+
+    # 1st layer: convolve X and Fs
+    conv_outputs_mat = Conv(MX, Fs_flat)    # (n_p, nf, n)
+
+    # ReLU & flatten convolution result
+    # (n_p*nf, n)
+    conv_flat = np.fmax(conv_outputs_mat.reshape((n_p*nf, n), order='C'), 0)
+
+    # 2nd layer: fully connected
+    S1 = W1 @ conv_flat + b1    # (nh, n)
+    X1 = ReLU(S1)               # (nh, n)
+
+    # 3rd layer: fully connected
+    S = W2 @ X1 + b2     # (10, n)
+    P = Softmax(S)       # (10, n)
+
+    fp_data = {'conv_flat': conv_flat, 'S1': S1, 'X1': X1,
+                'S': S, 'P': P}
+    
+    return fp_data

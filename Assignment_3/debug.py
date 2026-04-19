@@ -34,3 +34,22 @@ print("Fs_flat diff: ", np.max(np.abs(Fs_flat - debug_data['Fs_flat'])))
 print("conv_outputs_mat diff: ", np.max(np.abs(conv_out_mat-debug_data['conv_outputs_mat'])))
 print("conv slow vs fast diff: ", np.max(np.abs(conv_out_mat-conv_out_slow_flat)))
 
+
+
+# --------------- Exercise 2 -----------------------------------
+
+# ----------- Forward Pass
+
+debug_network = {'Fs_flat': Fs_flat, 
+                 'W': [debug_data['W1'], debug_data['W2']],
+                 'b': [debug_data['b1'], debug_data['b2']]}
+
+fp_data = ForwardConv(MX, debug_network)
+
+print("conv_flat diff: ", 
+      np.max(np.abs(fp_data['conv_flat'] - debug_data['conv_flat'])))
+print("X1 diff: ",
+      np.max(np.abs(fp_data['X1'] - debug_data['X1'])))
+print("P diff: ",
+      np.max(np.abs(fp_data['P'] - debug_data['P'])))
+
