@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 
 from plotting import PlotPerformance
 from ann import ComputeAccuracy
@@ -21,8 +22,10 @@ def Evaluate(trained_net, data, test_data):
         print(f"Validation accuracy: {100 * val_acc:.2f}%")
         print(f"Test accuracy:       {100 * test_acc:.2f}%")
 
+        return train_acc, val_acc, test_acc
 
-def BuildAndStoreMX(data, test_data, f):
+
+def BuildAllMX(data, test_data, f):
         trainMX = MXFromX(data['trainX'], f)
         #del trainX      # to free memory
         validMX = MXFromX(data['validX'], f)
@@ -30,13 +33,24 @@ def BuildAndStoreMX(data, test_data, f):
         testMX = MXFromX(test_data['testX'], f)
         #del testX       # to free memory
 
-        SaveMX(trainMX, 'trainMX_' + str(n) + '.npy')
-        SaveMX(validMX, 'validMX_' + str(n) + '.npy')
-        SaveMX(testMX, 'testMX_' + str(n) + '.npy')
-
         data['trainMX'] = trainMX
         data['validMX'] = validMX
         test_data['testMX'] = testMX
+
+        return data, test_data
+
+
+def StoreAllMX(data, test_data, f):
+        n = data['trainMX'].shape[2]
+
+        SaveMX(data['trainMX'], 'trainMX_n' + str(n) + '_f' + str(f) + '.npy')
+        SaveMX(data['validMX'], 'validMX_n' + str(n) + '_f' + str(f) + '.npy')
+        SaveMX(data['testMX'], 'testMX_n' + str(n) + '_f' + str(f) + '.npy')
+
+def LoadAllMX(data, test_data, n, f):
+        data['trainMX'] = LoadMX('trainMX_n' + str(n) + '_f' + str(f) + '.npy')
+        data['validMX'] = LoadMX('validMX_n' + str(n) + '_f' + str(f) + '.npy')
+        test_data['testMX'] = LoadMX('testMX_n' + str(n) + '_f' + str(f) + '.npy')
 
         return data, test_data
 
@@ -46,16 +60,15 @@ def Ex3InitialRun(data, test_data):
         f = 4
         nf = 10 
         nh = 50
+        K = data['trainY'].shape[0]
 
-        # Build/store MX 
-        data, test_data = BuildAndStoreMX(data, test_data, f)
+        # Build MX 
+        data, test_data = BuildAllMX(data, test_data, f)
 
         # Initialize net 
         init_net = InitializeCNN(f, nf, nh, K, seed=42)
 
-
         # ------------------ Train parameters ------------------------
-
         lam = 0.003
 
         eta_min = 1e-5
@@ -66,9 +79,7 @@ def Ex3InitialRun(data, test_data):
         GDparams = {'n_batch': 100, 'eta_min': eta_min, 'eta_max': eta_max,
                 'n_s': n_s, 'n_cycles': n_cycles}
 
-
         # -------------- Train -----------------------------------------
-
         t0 = time.perf_counter()
 
         trained_net, history = MiniBatchGDConv(data, GDparams, init_net, lam, seed=42, n_rec=10)
@@ -77,12 +88,9 @@ def Ex3InitialRun(data, test_data):
         print(f"Training time: {train_time:.2f} s")
 
         # ---------------- Evaluate -----------------------
-
         Evaluate(trained_net, data, test_data)
 
-
         # ............ Plot performance -------------------
-
         PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
                         title='Cost plot', ylabel='cost', file_name='ex3_cost')
 
@@ -92,6 +100,72 @@ def Ex3InitialRun(data, test_data):
         PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
                         title='Accuracy plot', ylabel='accuracy', file_name='ex3_acc')
 
+
+def RunArchitecture(data, test_data, f, nf, nh, lam, GDparams, n_rec=10):
+        K = data['trainY'].shape[0]
+
+        # Build MX 
+        data, test_data = BuildAllMX(data, test_data, f)
+
+        # Initialize net 
+        init_net = InitializeCNN(f, nf, nh, K, seed=42)
+
+        t0 = time.perf_counter()
+
+        trained_net, history = MiniBatchGDConv(data, GDparams, init_net, lam, seed=42, n_rec=n_rec)
+
+        train_time = time.perf_counter() - t0
+        print(f"Training time: {train_time:.2f} s")
+
+        train_acc, val_acc, test_acc  = Evaluate(trained_net, data, test_data)
+
+        del data['trainMX'], data['validMX'], test_data['testMX']       # to free memory
+
+        return history, train_acc, val_acc, test_acc, train_time
+
+
+def Ex3Comparisons(data, test_data):
+        lam = 0.003
+
+        GDparams = {'n_batch': 100, 'eta_min': 1e-5, 'eta_max': 1e-1,
+        'n_s': 800, 'n_cycles': 3}
+
+        architectures = [{'label': 'A1', 'f': 2,  'nf': 3, 'nh': 50},
+                         {'label': 'A2', 'f': 4,  'nf': 10, 'nh': 50},
+                         {'label': 'A3', 'f': 8,  'nf': 40, 'nh': 50},
+                         {'label': 'A4', 'f': 16, 'nf': 160, 'nh': 50},]
+        
+        test_accuracies = []
+        train_times = []
+        
+        for arch in architectures:
+                print(f"\nRunning {arch['label']}: f={arch['f']}, nf={arch['nf']}, nh={arch['nh']}")
+                _, _, _, test_acc, train_time = RunArchitecture(data, test_data,
+                                                                 arch['f'], arch['nf'], arch['nh'],
+                                                                 lam, GDparams, n_rec=10)
+                
+                test_accuracies.append(test_acc)
+                train_times.append(train_time)
+        
+        return test_accuracies, train_times
+
+
+def Ex3PlotBars(test_accuracies, train_times):
+        labels = ['A1', 'A2', 'A3', 'A4']
+
+        plt.figure()
+        plt.bar(labels, [100 * acc for acc in test_accuracies])
+        plt.ylabel('Test accuracy (%)')
+        plt.title('Test accuracy per architecture')
+        plt.savefig('./images/test_acc_bar')
+        plt.show()
+
+        plt.figure()
+        plt.bar(labels, train_times)
+        plt.ylabel('Training time (s)')
+        plt.title('Training time per architecture')
+        plt.savefig('./images/train_time_bar')
+        plt.show()
 
 
 
@@ -149,4 +223,7 @@ test_data = {'testX': testX, 'testY': testY, 'testy':testy}
 
 # ------------------------ Runs -------------------
 
-Ex3InitialRun(data, test_data)
+#Ex3InitialRun(data, test_data)
+
+test_accuracies, train_times = Ex3Comparisons(data, test_data)
+Ex3PlotBars(test_accuracies, train_times)
