@@ -418,7 +418,7 @@ def MiniBatchGDConv(data, GDparams, init_net, lam,
             j_start = j*n_batch
             j_end = (j+1)*n_batch
 
-            MX_batch = MX_epoch[:, j_start:j_end]
+            MX_batch = MX_epoch[:, :, j_start:j_end]
             Y_batch = Y_epoch[:, j_start:j_end]
 
             eta = CyclicEta(t, eta_min, eta_max, n_s)

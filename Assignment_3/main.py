@@ -1,10 +1,5 @@
 import numpy as np
-import pickle
-import copy
-import matplotlib.pyplot as plt
-from math import floor
-
-from torch_gradient_computations import ComputeGradsWithTorch
+import time
 
 from plotting import PlotPerformance
 from ann import ComputeAccuracy
@@ -19,12 +14,12 @@ cifar_dir = '../Datasets/cifar-10-batches-py/'
 
 # --------- For 1 batch
 
-trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
-validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
+#trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
+#validX, validY, validy = LoadBatch(cifar_dir +  'data_batch_2')
 
 
 # --------- For all batches
-"""
+#"""
 n_val = 1000
 
 X, Y, y = LoadAll(cifar_dir)
@@ -35,7 +30,7 @@ validX = X[:, :n_val]
 validY = Y[:, :n_val]
 validy = y[:n_val]
 
-"""
+#"""
 
 # ---------
 
@@ -59,7 +54,7 @@ testX = NormalizeData(testX, mean_X, std_X)
 # ------------ Network shape --------------------
 
 f = 4
-nf = 20 
+nf = 10 
 nh = 50
 
 
@@ -82,32 +77,37 @@ data = {'trainMX': trainMX, 'trainY': trainY, 'trainy': trainy,
 init_net = InitializeCNN(f, nf, nh, K, seed=42)
 
 
-# ------------------ Train  ------------------------
+# ------------------ Train parameters ------------------------
 
-lam = 0.001
+lam = 0.003
 
 eta_min = 1e-5
 eta_max = 1e-1
 n_s = 800
-n_cycles = 2
+n_cycles = 3
 
 GDparams = {'n_batch': 100, 'eta_min': eta_min, 'eta_max': eta_max,
              'n_s': n_s, 'n_cycles': n_cycles}
 
 
+# -------------- Train -----------------------------------------
+
+t0 = time.perf_counter()
 
 trained_net, history = MiniBatchGDConv(data, GDparams, init_net, lam, seed=42, n_rec=10)
 
+train_time = time.perf_counter() - t0
+print(f"Training time: {train_time:.2f} s")
 
 # ---------------- Evaluate -----------------------
 
-P_train = ForwardConv(trainX, trained_net)['P']
+P_train = ForwardConv(trainMX, trained_net)['P']
 train_acc = ComputeAccuracy(P_train, trainy)
 
-P_val = ForwardConv(validX, trained_net)['P']
+P_val = ForwardConv(validMX, trained_net)['P']
 val_acc = ComputeAccuracy(P_val, validy)
 
-P_test = ForwardConv(testX, trained_net)['P']
+P_test = ForwardConv(testMX, trained_net)['P']
 test_acc = ComputeAccuracy(P_test, testy)
 
 print(f"Training accuracy:   {100 * train_acc:.2f}%")

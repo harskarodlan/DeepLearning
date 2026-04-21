@@ -61,7 +61,7 @@ def LoadAll(dir):
 
     for i in range(1,6):
         X, Y, y = LoadBatch(dir + f'data_batch_{i}')
-        X_batches.append(X)     # X is (d, n)
+        X_batches.append(X.astype(np.float32))     # X is (d, n)
         Y_batches.append(Y)     # Y is (K, n)
         y_batches.append(y)     # y is (n,)
 

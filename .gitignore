@@ -2,6 +2,8 @@
 Datasets/
 *.tar.gz
 
+Assignment_3/matrices/
+
 # python
 __pycache__/
 *.pyc
