@@ -1,6 +1,7 @@
 import numpy as np
+import copy
 
-from ann import Softmax, ComputeLoss
+from ann import Softmax, ComputeLoss, ComputeAccuracy, CyclicEta, PrintProgress
 
 def SlowConv(X_ims, Fs):
     """
@@ -147,9 +148,12 @@ def ForwardConv(MX, network):
 
     n_p, _, n = MX.shape
     nf = Fs_flat.shape[1]
-
+    
     # 1st layer: convolve X and Fs
+    b_conv = network['b_conv']  # (nf, 1)
+    b_conv = b_conv.reshape((1, nf, 1))
     conv_outputs_mat = Conv(MX, Fs_flat)    # (n_p, nf, n)
+    conv_outputs_mat += b_conv
 
     # ReLU & flatten convolution result
     # (n_p*nf, n)
@@ -242,8 +246,11 @@ def BackwardConv(MX, Y, fp_data, network, lam=0):
     # account for regularization in filters
     grad_Fs_flat += 2 * lam * Fs_flat
 
+    grad_b_conv = np.sum(GG, axis=(0, 2)).reshape((nf, 1)) / n
+
     grads = {}
     grads['Fs_flat'] = grad_Fs_flat
+    grads['b_conv'] = grad_b_conv
     grads['W'] = [dJdW1, dJdW2]
     grads['b'] = [dJdb1, dJdb2]
 
@@ -273,6 +280,9 @@ def InitializeCNN(f, nf, nh, K, seed=42):
   net_params = {}
   net_params['Fs_flat'] = (
       np.sqrt(2.0/n_conv) * rng.standard_normal((n_conv, nf), dtype=np.float32))
+  
+  # conv layer bias
+  net_params['b_conv'] = np.zeros((nf,1), dtype=np.float32)
 
   net_params['W'] = [None] * 2
   net_params['b'] = [None] * 2
@@ -305,3 +315,131 @@ def ComputeCostConv(P, y, network, lam):
     reg = lam * (sum(np.sum(W ** 2) for W in network['W']) +
           np.sum(network['Fs_flat'] ** 2))
     return loss + reg
+
+
+
+def RecordHistoryConv(data, net, lam, eta, t, history):
+    """
+        Appends current performance statistics to history.
+    """
+
+    y = data['trainy']
+    y_val = data['validy']
+
+    P_train = ForwardConv(data['trainMX'], net)['P']
+    P_val = ForwardConv(data['validMX'], net)['P']
+
+    history['train_loss'].append(ComputeLoss(P_train, y))
+    history['train_cost'].append(ComputeCostConv(P_train, y, net, lam))
+    history['train_acc'].append(ComputeAccuracy(P_train, y))
+
+    history['val_loss'].append(ComputeLoss(P_val, y_val))
+    history['val_cost'].append(ComputeCostConv(P_val, y_val, net, lam))
+    history['val_acc'].append(ComputeAccuracy(P_val, y_val))
+
+    history['eta'].append(eta)
+    history['step'].append(t)
+
+
+
+
+def MiniBatchGDConv(data, GDparams, init_net, lam,
+                 seed=None, n_rec=10):
+    """
+    Performs mini-batch gradient descent to train network parameters.
+
+    Args:
+        data: dict with training and validation data
+        GDparams: dict of GD parameter values, keys
+                  'n_batch' - mini batch size
+                  'eta_min' - minimum learning rate of cycle
+                  'eta_max' - maximum learning rate of cycle
+                  'n_s' - stepsize
+                  'n_cycles' - num of cycles
+        init_net: initial network parameters, dict with  
+        lam: regularization coefficient lambda
+        seed: random generator seed for shuffling
+        n_rec: num times per cycle performance is recorded
+    Returns:
+        trained_net: dict of trained network parameters
+        history: dict of performance statistics for each epoch, keys
+                 'train_loss' - loss after each epoch
+                 'train_cost' - cost after each epoch
+                 'train_acc' - accuracy after each epoch
+    """
+    trained_net = copy.deepcopy(init_net)
+
+    MX = data['trainMX']
+    Y = data['trainY']
+    y = data['trainy']
+    MX_val = data['validMX']
+    Y_val = data['validY']
+    y_val = data['validy']
+
+    n_batch = GDparams['n_batch']
+    eta_min = GDparams['eta_min']
+    eta_max = GDparams['eta_max']
+    n_s = GDparams['n_s']
+    n_cycles = GDparams['n_cycles']
+
+    n = MX.shape[2]
+
+    t = 0
+    t_end = 2 * n_s * n_cycles
+
+    record_rate = (2 * n_s) // n_rec
+
+    history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
+                'val_loss': [], 'val_cost': [], 'val_acc': [],
+                'eta': [], 'step': []}
+
+    # reset rng for each GD
+    if seed is not None:
+        local_rng = np.random.default_rng(seed)
+    else:
+        local_rng = None
+
+    # run until all cycles done
+    while t <= t_end:
+        # shuffle dataset before each epoch
+        if seed is not None:
+            perm = local_rng.permutation(n)
+            MX_epoch = MX[:, :, perm]
+            Y_epoch = Y[:, perm]
+        else:
+            MX_epoch = MX
+            Y_epoch = Y
+
+        for j in range(n//n_batch): # go through mini-batches
+            if t > t_end:
+                break
+
+            # mini batch indices
+            j_start = j*n_batch
+            j_end = (j+1)*n_batch
+
+            MX_batch = MX_epoch[:, j_start:j_end]
+            Y_batch = Y_epoch[:, j_start:j_end]
+
+            eta = CyclicEta(t, eta_min, eta_max, n_s)
+
+            # apply mini batch
+            fp_data = ForwardConv(MX_batch, trained_net)
+            # backprop mini batch
+            grads = BackwardConv(MX_batch, Y_batch, fp_data, trained_net, lam)
+
+            # update parameters using GD with mini batch
+            trained_net['Fs_flat'] -= eta * grads['Fs_flat']
+            trained_net['b_conv'] -= eta * grads['b_conv']
+            trained_net['W'][0] -= eta*grads['W'][0]
+            trained_net['b'][0] -= eta*grads['b'][0]
+            trained_net['W'][1] -= eta*grads['W'][1]
+            trained_net['b'][1] -= eta*grads['b'][1]
+
+            if t % record_rate == 0:
+                RecordHistoryConv(data, trained_net, lam, eta, t, history)
+                PrintProgress(t, eta, history)
+
+            t += 1
+
+    return trained_net, history

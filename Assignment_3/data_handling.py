@@ -97,7 +97,7 @@ def LoadDebugData():
     """
     debug_file = 'debug_info.npz'
     debug_data = np.load(debug_file)
-    X = debug_data['X']
+    X = debug_data['X'].astype(np.float32)
 
     n = X.shape[1]
 
