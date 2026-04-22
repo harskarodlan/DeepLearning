@@ -341,6 +341,15 @@ def RecordHistoryConv(data, net, lam, eta, t, history):
     history['step'].append(t)
 
 
+def Step(trained_net, grads, eta):
+    trained_net['Fs_flat'] -= eta * grads['Fs_flat']
+    trained_net['b_conv'] -= eta * grads['b_conv']
+    trained_net['W'][0] -= eta*grads['W'][0]
+    trained_net['b'][0] -= eta*grads['b'][0]
+    trained_net['W'][1] -= eta*grads['W'][1]
+    trained_net['b'][1] -= eta*grads['b'][1]
+
+    return trained_net
 
 
 def MiniBatchGDConv(data, GDparams, init_net, lam,
@@ -367,6 +376,9 @@ def MiniBatchGDConv(data, GDparams, init_net, lam,
                  'train_cost' - cost after each epoch
                  'train_acc' - accuracy after each epoch
     """
+    # reset rng for each GD
+    local_rng = np.random.default_rng(seed)
+
     trained_net = copy.deepcopy(init_net)
 
     MX = data['trainMX']
@@ -393,22 +405,12 @@ def MiniBatchGDConv(data, GDparams, init_net, lam,
                 'val_loss': [], 'val_cost': [], 'val_acc': [],
                 'eta': [], 'step': []}
 
-    # reset rng for each GD
-    if seed is not None:
-        local_rng = np.random.default_rng(seed)
-    else:
-        local_rng = None
-
     # run until all cycles done
     while t <= t_end:
         # shuffle dataset before each epoch
-        if seed is not None:
-            perm = local_rng.permutation(n)
-            MX_epoch = MX[:, :, perm]
-            Y_epoch = Y[:, perm]
-        else:
-            MX_epoch = MX
-            Y_epoch = Y
+        perm = local_rng.permutation(n)
+        MX_epoch = MX[:, :, perm]
+        Y_epoch = Y[:, perm]
 
         for j in range(n//n_batch): # go through mini-batches
             if t > t_end:
@@ -429,16 +431,171 @@ def MiniBatchGDConv(data, GDparams, init_net, lam,
             grads = BackwardConv(MX_batch, Y_batch, fp_data, trained_net, lam)
 
             # update parameters using GD with mini batch
-            trained_net['Fs_flat'] -= eta * grads['Fs_flat']
-            trained_net['b_conv'] -= eta * grads['b_conv']
-            trained_net['W'][0] -= eta*grads['W'][0]
-            trained_net['b'][0] -= eta*grads['b'][0]
-            trained_net['W'][1] -= eta*grads['W'][1]
-            trained_net['b'][1] -= eta*grads['b'][1]
+            trained_net = Step(trained_net, grads, eta)
 
             if t % record_rate == 0:
                 RecordHistoryConv(data, trained_net, lam, eta, t, history)
                 PrintProgress(t, eta, history)
+
+            t += 1
+
+    return trained_net, history
+
+
+
+
+def IncreasingCyclicEta(t, eta_min, eta_max, step_1):
+    """
+    Computes cyclic learning rate eta_t that doubles number 
+    of steps each cycle.
+
+    Args:
+        t: step in eta cycle
+        eta_min: minimum learning rate
+        eta_max: maximum learning rate
+        step_1: num of steps in first half cycle
+
+    Returns:
+        eta_t: learning rate at step t
+    """
+    c = 0  # cycle number
+    step = step_1   # steps until peak of cycle
+    tc0 = 0          # start step of cycle
+
+    # find which cycle t is on
+    while t >= tc0 + 2*step:
+        tc0 += 2*step
+        c += 1
+        step *= 2   # double steps each cycle
+
+    tc = t - tc0    # cycle-local step counter
+
+    if tc <= step:  
+        # increase eta
+        eta_t = eta_min + (tc / step) * (eta_max-eta_min)
+    else:
+        # decrease eta
+        eta_t = eta_max - ((tc - step) / step) * (eta_max-eta_min)        
+
+    return eta_t
+
+
+def RecordHistoryConvSparse(data, test_data, net, eta, t, history, eval_size=1000):
+    """
+        Appends current performance statistics to history.
+    """
+    trainMX_eval = data['trainMX'][:,:,:eval_size] 
+    trainy_eval = data['trainy'][:eval_size] 
+
+    P_train = ForwardConv(trainMX_eval, net)['P']
+    P_test = ForwardConv(test_data['testMX'], net)['P']
+
+    history['train_loss'].append(ComputeLoss(P_train, trainy_eval))
+    history['train_acc'].append(ComputeAccuracy(P_train, trainy_eval))
+
+    history['test_loss'].append(ComputeLoss(P_test, test_data['testy']))
+    history['test_acc'].append(ComputeAccuracy(P_test, test_data['testy']))
+
+    history['eta'].append(eta)
+    history['step'].append(t)
+
+
+
+def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42):
+    """
+    Performs mini-batch gradient descent to train network parameters.
+    Used in the "train for longer" part of exercise 3.
+    With increasing cyclic eta and sparse recording.
+
+    Args:
+        data: dict with training and validation data
+        GDparams: dict of GD parameter values, keys
+                  'n_batch' - mini batch size
+                  'eta_min' - minimum learning rate of cycle
+                  'eta_max' - maximum learning rate of cycle
+                  'step_1' - num of steps for first half cycle
+                  'n_cycles' - num of cycles
+        init_net: initial network parameters, dict with  
+        lam: regularization coefficient lambda
+        seed: random generator seed for shuffling
+    Returns:
+        trained_net: dict of trained network parameters
+        history: dict of performance statistics for each epoch, keys
+                 'train_loss' - loss after each epoch
+                 'train_cost' - cost after each epoch
+                 'train_acc' - accuracy after each epoch
+    """
+    # reset rng for each GD
+    local_rng = np.random.default_rng(seed)
+
+    trained_net = copy.deepcopy(init_net)
+
+    MX = data['trainMX']
+    Y = data['trainY']
+    y = data['trainy']
+    MX_val = data['validMX']
+    Y_val = data['validY']
+    y_val = data['validy']
+
+    n_batch = GDparams['n_batch']
+    eta_min = GDparams['eta_min']
+    eta_max = GDparams['eta_max']
+    step_1 = GDparams['step_1']
+    n_cycles = GDparams['n_cycles']
+
+    n = MX.shape[2]
+
+    history = {'train_loss': [], 'train_acc': [],
+               'test_loss': [], 'test_acc': [],
+                'eta': [], 'step': []}
+
+    t = 0
+
+    # calculate total num steps to take
+    t_end = 0
+    step = step_1
+    for _ in range(n_cycles):
+        t_end += 2*step
+        step *= 2
+
+
+    record_rate = step_1 // 2       # record every (step_1 / 2)'th step
+
+    # run until all cycles done
+    while t <= t_end:
+        # shuffle dataset before each epoch
+        perm = local_rng.permutation(n)
+        MX_epoch = MX[:, :, perm]
+        Y_epoch = Y[:, perm]
+
+        for j in range(n//n_batch): # go through mini-batches
+            if t > t_end:
+                break
+
+            # mini batch indices
+            j_start = j*n_batch
+            j_end = (j+1)*n_batch
+
+            MX_batch = MX_epoch[:, :, j_start:j_end]
+            Y_batch = Y_epoch[:, j_start:j_end]
+
+            eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1)
+
+            # apply mini batch
+            fp_data = ForwardConv(MX_batch, trained_net)
+            # backprop mini batch
+            grads = BackwardConv(MX_batch, Y_batch, fp_data, trained_net, lam)
+
+            # update parameters using GD with mini batch
+            trained_net = Step(trained_net, grads, eta)
+
+            if t % record_rate == 0: 
+                RecordHistoryConvSparse(data, test_data, trained_net, eta, t, history)
+                print(f"step {t}: eta = {eta:.6f}, "
+                    f"train loss = {history['train_loss'][-1]:.6f}, "
+                    f"train acc = {history['train_acc'][-1]:.4f}, "
+                    f"test loss = {history['test_loss'][-1]:.6f}, "
+                    f"test acc = {history['test_acc'][-1]:.4f}")
 
             t += 1
 

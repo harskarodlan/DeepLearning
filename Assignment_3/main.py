@@ -169,6 +169,69 @@ def Ex3PlotBars(test_accuracies, train_times):
 
 
 
+def RunArchitectureLong(data, test_data, f, nf, nh, lam, GDparams):
+        K = data['trainY'].shape[0]
+
+        # Build MX 
+        data, test_data = BuildAllMX(data, test_data, f)
+
+        # Initialize net 
+        init_net = InitializeCNN(f, nf, nh, K, seed=42)
+
+        t0 = time.perf_counter()
+
+        trained_net, history = MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam)
+
+        train_time = time.perf_counter() - t0
+        print(f"Training time: {train_time:.2f} s")
+
+        train_acc, val_acc, test_acc  = Evaluate(trained_net, data, test_data)
+
+        del data['trainMX'], data['validMX'], test_data['testMX']       # to free memory
+
+        return history, train_acc, val_acc, test_acc, train_time
+
+
+def PlotTrainTestLoss(history, title, filename):
+    plt.figure()
+    plt.plot(history['step'], history['train_loss'], label='training loss')
+    plt.plot(history['step'], history['test_loss'], label='test loss')
+    plt.xlabel('update step')
+    plt.ylabel('loss')
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('./images/'+filename)
+
+
+def Ex3TrainForLonger(data, test_data):
+        results = []
+
+        lam = 0.003
+
+        GDparams = {'n_batch': 100, 'eta_min': 1e-5, 'eta_max': 1e-1,
+        'step_1': 800, 'n_cycles': 3}
+
+
+        architectures = [{'label': 'A2', 'f': 4,  'nf': 10, 'nh': 50},
+                         {'label': 'A3', 'f': 8,  'nf': 40, 'nh': 50},
+                         {'label': 'A2 wide', 'f': 4,  'nf': 40, 'nh': 50}]
+
+        test_accuracies = {}
+        
+        for arch in architectures:
+                print(f"\nRunning {arch['label']}: f={arch['f']}, nf={arch['nf']}, nh={arch['nh']}")
+                history, _, _, test_acc, _ = RunArchitectureLong(data, test_data,
+                                                                 arch['f'], arch['nf'], arch['nh'],
+                                                                 lam, GDparams)
+                PlotTrainTestLoss(history, arch['label'] + ' loss', arch['label']+'_loss_long')
+                test_accuracies[arch['label']] = test_acc
+        
+        print()
+        for label in test_accuracies.keys():
+                print(f"{label} : test accuracy = {test_accuracies[label]}")
+        
+        return
 
 # ------- Load data ----------------------------------------------------
 
@@ -225,5 +288,7 @@ test_data = {'testX': testX, 'testY': testY, 'testy':testy}
 
 #Ex3InitialRun(data, test_data)
 
-test_accuracies, train_times = Ex3Comparisons(data, test_data)
-Ex3PlotBars(test_accuracies, train_times)
+#test_accuracies, train_times = Ex3Comparisons(data, test_data)
+#Ex3PlotBars(test_accuracies, train_times)
+
+Ex3TrainForLonger(data, test_data)
