@@ -501,7 +501,7 @@ def RecordHistoryConvSparse(data, test_data, net, eta, t, history, eval_size=100
 
 
 
-def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42):
+def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smooth=False, eps=0.1):
     """
     Performs mini-batch gradient descent to train network parameters.
     Used in the "train for longer" part of exercise 3.
@@ -518,6 +518,8 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42):
         init_net: initial network parameters, dict with  
         lam: regularization coefficient lambda
         seed: random generator seed for shuffling
+        smooth: uses label smoothing if True
+        eps: epsilon used in label smoothing
     Returns:
         trained_net: dict of trained network parameters
         history: dict of performance statistics for each epoch, keys
@@ -579,6 +581,9 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42):
             MX_batch = MX_epoch[:, :, j_start:j_end]
             Y_batch = Y_epoch[:, j_start:j_end]
 
+            if smooth:
+                Y_batch = SmoothLabels(Y_batch, eps)
+
             eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1)
 
             # apply mini batch
@@ -600,3 +605,14 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42):
             t += 1
 
     return trained_net, history
+
+
+def SmoothLabels(Y, eps):
+    """
+    Label smoothens one-hot encoded labels Y.
+    """
+
+    K = Y.shape[0]
+    Y_smooth = (1.0 - eps)*Y + (eps/(K-1))*(1.0-Y)
+    return Y_smooth.astype(np.float32)
+
