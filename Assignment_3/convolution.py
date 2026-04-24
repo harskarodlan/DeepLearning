@@ -2,6 +2,7 @@ import numpy as np
 import copy
 
 from ann import Softmax, ComputeLoss, ComputeAccuracy, CyclicEta, PrintProgress
+from ann import GetFlipIndices
 
 def SlowConv(X_ims, Fs):
     """
@@ -444,7 +445,7 @@ def MiniBatchGDConv(data, GDparams, init_net, lam,
 
 
 
-def IncreasingCyclicEta(t, eta_min, eta_max, step_1):
+def IncreasingCyclicEta(t, eta_min, eta_max, step_1, decay=1):
     """
     Computes cyclic learning rate eta_t that doubles number 
     of steps each cycle.
@@ -467,6 +468,9 @@ def IncreasingCyclicEta(t, eta_min, eta_max, step_1):
         tc0 += 2*step
         c += 1
         step *= 2   # double steps each cycle
+
+    # decay eta_max by cycle
+    eta_max = eta_max * (decay ** c)
 
     tc = t - tc0    # cycle-local step counter
 
@@ -616,3 +620,120 @@ def SmoothLabels(Y, eps):
     Y_smooth = (1.0 - eps)*Y + (eps/(K-1))*(1.0-Y)
     return Y_smooth.astype(np.float32)
 
+
+
+
+def MiniBatchGDConvBonus(data, test_data, GDparams, init_net, lam, f, 
+                         seed=42, flip=False, smooth=False, eps=0.1):
+    """
+    Performs mini-batch gradient descent to train network parameters.
+    Used in the "train for longer" part of exercise 3.
+    With increasing cyclic eta and sparse recording.
+
+    Args:
+        data: dict with training and validation data
+        GDparams: dict of GD parameter values, keys
+                  'n_batch' - mini batch size
+                  'eta_min' - minimum learning rate of cycle
+                  'eta_max' - maximum learning rate of cycle
+                  'step_1' - num of steps for first half cycle
+                  'n_cycles' - num of cycles
+        init_net: initial network parameters, dict with  
+        lam: regularization coefficient lambda
+        seed: random generator seed for shuffling
+        smooth: uses label smoothing if True
+        eps: epsilon used in label smoothing
+    Returns:
+        trained_net: dict of trained network parameters
+        history: dict of performance statistics for each epoch, keys
+                 'train_loss' - loss after each epoch
+                 'train_cost' - cost after each epoch
+                 'train_acc' - accuracy after each epoch
+    """
+    # reset rng for each GD
+    local_rng = np.random.default_rng(seed)
+
+    trained_net = copy.deepcopy(init_net)
+
+    X = data['trainX']
+    Y = data['trainY']
+    y = data['trainy']
+    MX_val = data['validMX']
+    Y_val = data['validY']
+    y_val = data['validy']
+
+    n_batch = GDparams['n_batch']
+    eta_min = GDparams['eta_min']
+    eta_max = GDparams['eta_max']
+    step_1 = GDparams['step_1']
+    n_cycles = GDparams['n_cycles']
+
+    n = X.shape[1]
+
+    t = 0
+
+    # calculate total num steps to take
+    t_end = 0
+    step = step_1
+    for _ in range(n_cycles):
+        t_end += 2*step
+        step *= 2
+
+    record_rate = step_1 // 2       # record every (step_1 / 2)'th step
+
+    # get data indices for flipping image
+    if flip:
+        inds_flip = GetFlipIndices()
+
+    # run until all cycles done
+    while t <= t_end:
+        # shuffle dataset before each epoch
+        perm = local_rng.permutation(n)
+
+        for j in range(n//n_batch): # go through mini-batches
+            if t > t_end:
+                break
+
+            # mini batch indices
+            j_start = j*n_batch
+            j_end = (j+1)*n_batch
+            batch_inds = perm[j_start:j_end]
+
+            if flip:
+                X_batch = X[:, batch_inds].copy()   # copy if flipping
+
+                # flip each image with 0.5 chance
+                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
+                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
+            else:
+                X_batch = X[:, batch_inds]
+            Y_batch = Y[:, batch_inds]
+
+            MX_batch = MXFromX(X_batch, f)
+
+            if smooth:
+                Y_batch = SmoothLabels(Y_batch, eps)
+
+            eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1, decay=0.8)
+
+            # apply mini batch
+            fp_data = ForwardConv(MX_batch, trained_net)
+            # backprop mini batch
+            grads = BackwardConv(MX_batch, Y_batch, fp_data, trained_net, lam)
+
+            # update parameters using GD with mini batch
+            trained_net = Step(trained_net, grads, eta)
+
+            if t % record_rate == 0: 
+
+                P_train = ForwardConv(MX_batch, trained_net)['P']
+                P_test = ForwardConv(test_data['testMX'], trained_net)['P']
+                train_acc = ComputeAccuracy(P_train, y[batch_inds])
+                test_acc = ComputeAccuracy(P_test, test_data['testy'])
+                print(f"step {t}: eta = {eta:.6f}, "
+                    f"train acc = {train_acc:.4f}, "
+                    f"test acc = {test_acc:.4f}, ")
+
+            t += 1
+
+    return trained_net

@@ -266,6 +266,35 @@ def Ex4(data, test_data):
         return
 
 
+def RunArchitectureBonus(data, test_data, f, nf, nh, lam, GDparams, flip=False, smooth=False, eps=0.1):
+        K = data['trainY'].shape[0]
+
+        # Build validation/test MX 
+        data['validMX'] = MXFromX(data['validX'], f)
+        test_data['testMX'] = MXFromX(test_data['testX'], f)
+        del data['validX'], test_data['testX']  # to free memory
+
+        # Initialize net 
+        init_net = InitializeCNN(f, nf, nh, K, seed=42)
+
+        t0 = time.perf_counter()
+
+        trained_net = MiniBatchGDConvBonus(data, test_data, GDparams, init_net, lam, f,
+                                                    seed=42,flip=True, smooth=smooth, eps=eps)
+
+        train_time = time.perf_counter() - t0
+        print(f"Training time: {train_time:.2f} s")
+
+        data['trainMX'] = MXFromX(data['trainX'], f)
+        del data['trainX']
+
+        train_acc, val_acc, test_acc  = Evaluate(trained_net, data, test_data)
+
+        del data['trainMX'], data['validMX'], test_data['testMX']       # to free memory
+
+        return train_acc, val_acc, test_acc, train_time
+
+
 # ------- Load data ----------------------------------------------------
 
 cifar_dir = '../Datasets/cifar-10-batches-py/'
@@ -319,11 +348,18 @@ test_data = {'testX': testX, 'testY': testY, 'testy':testy}
 
 # ------------------------ Runs -------------------
 
-#Ex3InitialRun(data, test_data)
+f = 4
+nf = 40
+nh = 300
+lam = 0.0025
 
-#test_accuracies, train_times = Ex3Comparisons(data, test_data)
-#Ex3PlotBars(test_accuracies, train_times)
+GDparams = {
+    'n_batch': 100,
+    'eta_min': 1e-5,
+    'eta_max': 1e-1,
+    'step_1': 800,
+    'n_cycles': 4
+}
 
-#Ex3TrainForLonger(data, test_data)
-
-#Ex4(data, test_data)
+RunArchitectureBonus(data, test_data, f, nf, nh, lam, GDparams,
+                     flip=True, smooth=True, eps=0.1)
