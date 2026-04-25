@@ -624,7 +624,7 @@ def SmoothLabels(Y, eps):
 
 
 def MiniBatchGDConvBonus(data, test_data, GDparams, init_net, lam, f, 
-                         seed=42, flip=False, smooth=False, eps=0.1):
+                         seed=42, flip=False, smooth=False, eps=0.1, decay=1):
     """
     Performs mini-batch gradient descent to train network parameters.
     Used in the "train for longer" part of exercise 3.
@@ -714,7 +714,7 @@ def MiniBatchGDConvBonus(data, test_data, GDparams, init_net, lam, f,
             if smooth:
                 Y_batch = SmoothLabels(Y_batch, eps)
 
-            eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1, decay=0.8)
+            eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1, decay=decay)
 
             # apply mini batch
             fp_data = ForwardConv(MX_batch, trained_net)

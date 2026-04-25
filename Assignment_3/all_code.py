@@ -3,91 +3,6 @@ import time
 import matplotlib.pyplot as plt
 import copy
 import pickle
-import torch
-
-
-
-def ComputeGradsWithTorch(MX, y, network_params):
-    
-    MXt = torch.from_numpy(MX)
-    MXt = MXt.to(torch.float32)
-
-    L = len(network_params['W'])
-
-    # will be computing the gradient w.r.t. these parameters
-    Fs_flat = torch.tensor(network_params['Fs_flat'], requires_grad=True)    
-    W = [None] * L
-    b = [None] * L    
-    for i in range(len(network_params['W'])):
-        W[i] = torch.tensor(network_params['W'][i], requires_grad=True)
-        b[i] = torch.tensor(network_params['b'][i], requires_grad=True)        
-
-    ## give informative names to these torch classes        
-    apply_relu = torch.nn.ReLU()
-    apply_softmax = torch.nn.Softmax(dim=0)
-
-    #### BEGIN your code ###########################
-    
-    # Apply the scoring function corresponding to equations (1-3) in assignment description 
-    # If X is d x n then the final scores torch array should have size 10 x n 
-
-    n_p, _, n = MX.shape
-    nf = network_params['Fs_flat'].shape[1]
-
-    conv_outputs_mat = torch.zeros((n_p, nf, n))
-
-    for i in range(n):
-        conv_outputs_mat[:, :, i] = torch.matmul(MXt[:, :, i], Fs_flat)
-    
-    b_conv = torch.tensor(network_params['b_conv'], requires_grad=True)
-
-    conv_outputs_mat += b_conv
-    
-    # ReLU + flatten
-    conv_flat = apply_relu(conv_outputs_mat.reshape(n_p*nf, n))
-    
-    S1 = torch.matmul(W[0], conv_flat) + b[0]     
-    X1 = apply_relu(S1)                     
-    scores = torch.matmul(W[1], X1) + b[1]  
-
-    #### END of your code ###########################            
-
-    # apply SoftMax to each column of scores     
-    P = apply_softmax(scores)
-    
-    # compute the loss
-    n = MX.shape[2]
-    loss = torch.mean(-torch.log(P[y, np.arange(n)]))
-    
-    # compute the backward pass relative to the loss and the named parameters 
-    loss.backward()
-
-    # extract the computed gradients and make them numpy arrays 
-    grads = {}
-    grads['Fs_flat'] = Fs_flat.grad.numpy()
-    grads['b_conv'] = b_conv.grad.numpy()
-    grads['W'] = [None] * L
-    grads['b'] = [None] * L
-    for i in range(L):
-        grads['W'][i] = W[i].grad.numpy()
-        grads['b'][i] = b[i].grad.numpy()
-
-    return grads
-
-
-def PlotPerformance(steps, train_values, val_values, title, ylabel, file_name=None):
-    plt.figure()
-    plt.plot(steps, train_values, label='training')
-    plt.plot(steps, val_values, label='validation')
-    plt.xlabel('update step')
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.legend()
-    plt.grid(True)
-    if file_name:
-        plt.savefig("./images/"+file_name)
-    plt.show()
-
 
 def LoadBatch(filename):
     """
@@ -258,81 +173,6 @@ def ComputeAccuracy(P, y):
 
     return acc
 
-
-
-def CyclicEta(t, eta_min, eta_max, n_s):
-    """
-    Computes cyclic learning rate eta_t.
-
-    Args:
-        t: step in eta cycle
-        eta_min: minimum learning rate
-        eta_max: maximum learning rate
-        n_s: step size
-
-    Returns:
-        eta_t: learning rate at step t
-    """
-
-    l = t // (2 * n_s)
-
-    if 2*l*n_s <= t <= (2*l + 1) * n_s:
-        eta_t = eta_min + ((t - 2*l*n_s) / n_s)*(eta_max - eta_min)
-    else:
-        eta_t = eta_max - ((t - (2*l + 1)*n_s) / n_s)*(eta_max - eta_min)
-
-    return eta_t
-
-
-def PrintProgress(t, eta, history):
-    """
-        Prints current performance statistics.
-    """
-    print(f"step {t}: eta = {eta:.6f}, "
-            f"train loss = {history['train_loss'][-1]:.6f}, "
-            f"train cost = {history['train_cost'][-1]:.6f}, "
-            f"train acc = {history['train_acc'][-1]:.4f}, "
-            f"val loss = {history['val_loss'][-1]:.6f}, "
-            f"val cost = {history['val_cost'][-1]:.6f}, "
-            f"val acc = {history['val_acc'][-1]:.4f}")
-
-
-def SlowConv(X_ims, Fs):
-    """
-    Performs slow convolution (for-loops).
-
-    Args:
-        X_ims: image data (32, 32, 3, n) = (32, 32, 3, 5)
-        Fs: filters (f, f, 3, nf) = (4, 4, 3, 2)
-    Returns:
-        conv_out: convolution result 
-                  (32/f, 32/f, nf, n) = (8, 8, 2, 5)
-    """
-
-    h, w, _, n = X_ims.shape
-    f, _, _, nf = Fs.shape
-
-    out_h = h // f
-    out_w = w // f
-    conv_out = np.zeros((out_h, out_w, nf, n), dtype=X_ims.dtype)
-
-    # for each image
-    for i in range(n):
-        # for each filter
-        for k in range(nf):
-            # for each patch row
-            for r in range(out_h):
-                # for each patch column
-                for c in range(out_w):
-                    # idx of beginning of patch
-                    r0 = r * f
-                    c0 = c * f
-
-                    patch = X_ims[r0: r0 + f, c0: c0+f, :, i]
-
-                    # apply k:th filter to patch
-                    conv_out[r, c, k, i] = np.sum(patch * Fs[:, :, :, k])
-    return conv_out
 
 
 def BuildMX(X_ims, f):
@@ -612,133 +452,8 @@ def ComputeCostConv(P, y, network, lam):
 
 
 
-def RecordHistoryConv(data, net, lam, eta, t, history):
-    """
-        Appends current performance statistics to history.
-    """
 
-    y = data['trainy']
-    y_val = data['validy']
-
-    P_train = ForwardConv(data['trainMX'], net)['P']
-    P_val = ForwardConv(data['validMX'], net)['P']
-
-    history['train_loss'].append(ComputeLoss(P_train, y))
-    history['train_cost'].append(ComputeCostConv(P_train, y, net, lam))
-    history['train_acc'].append(ComputeAccuracy(P_train, y))
-
-    history['val_loss'].append(ComputeLoss(P_val, y_val))
-    history['val_cost'].append(ComputeCostConv(P_val, y_val, net, lam))
-    history['val_acc'].append(ComputeAccuracy(P_val, y_val))
-
-    history['eta'].append(eta)
-    history['step'].append(t)
-
-
-def Step(trained_net, grads, eta):
-    trained_net['Fs_flat'] -= eta * grads['Fs_flat']
-    trained_net['b_conv'] -= eta * grads['b_conv']
-    trained_net['W'][0] -= eta*grads['W'][0]
-    trained_net['b'][0] -= eta*grads['b'][0]
-    trained_net['W'][1] -= eta*grads['W'][1]
-    trained_net['b'][1] -= eta*grads['b'][1]
-
-    return trained_net
-
-
-def MiniBatchGDConv(data, GDparams, init_net, lam,
-                 seed=None, n_rec=10):
-    """
-    Performs mini-batch gradient descent to train network parameters.
-
-    Args:
-        data: dict with training and validation data
-        GDparams: dict of GD parameter values, keys
-                  'n_batch' - mini batch size
-                  'eta_min' - minimum learning rate of cycle
-                  'eta_max' - maximum learning rate of cycle
-                  'n_s' - stepsize
-                  'n_cycles' - num of cycles
-        init_net: initial network parameters, dict with  
-        lam: regularization coefficient lambda
-        seed: random generator seed for shuffling
-        n_rec: num times per cycle performance is recorded
-    Returns:
-        trained_net: dict of trained network parameters
-        history: dict of performance statistics for each epoch, keys
-                 'train_loss' - loss after each epoch
-                 'train_cost' - cost after each epoch
-                 'train_acc' - accuracy after each epoch
-    """
-    # reset rng for each GD
-    local_rng = np.random.default_rng(seed)
-
-    trained_net = copy.deepcopy(init_net)
-
-    MX = data['trainMX']
-    Y = data['trainY']
-    y = data['trainy']
-    MX_val = data['validMX']
-    Y_val = data['validY']
-    y_val = data['validy']
-
-    n_batch = GDparams['n_batch']
-    eta_min = GDparams['eta_min']
-    eta_max = GDparams['eta_max']
-    n_s = GDparams['n_s']
-    n_cycles = GDparams['n_cycles']
-
-    n = MX.shape[2]
-
-    t = 0
-    t_end = 2 * n_s * n_cycles
-
-    record_rate = (2 * n_s) // n_rec
-
-    history = {'train_loss': [], 'train_cost': [], 'train_acc': [],
-                'val_loss': [], 'val_cost': [], 'val_acc': [],
-                'eta': [], 'step': []}
-
-    # run until all cycles done
-    while t <= t_end:
-        # shuffle dataset before each epoch
-        perm = local_rng.permutation(n)
-        MX_epoch = MX[:, :, perm]
-        Y_epoch = Y[:, perm]
-
-        for j in range(n//n_batch): # go through mini-batches
-            if t > t_end:
-                break
-
-            # mini batch indices
-            j_start = j*n_batch
-            j_end = (j+1)*n_batch
-
-            MX_batch = MX_epoch[:, :, j_start:j_end]
-            Y_batch = Y_epoch[:, j_start:j_end]
-
-            eta = CyclicEta(t, eta_min, eta_max, n_s)
-
-            # apply mini batch
-            fp_data = ForwardConv(MX_batch, trained_net)
-            # backprop mini batch
-            grads = BackwardConv(MX_batch, Y_batch, fp_data, trained_net, lam)
-
-            # update parameters using GD with mini batch
-            trained_net = Step(trained_net, grads, eta)
-
-            if t % record_rate == 0:
-                RecordHistoryConv(data, trained_net, lam, eta, t, history)
-                PrintProgress(t, eta, history)
-
-            t += 1
-
-    return trained_net, history
-
-
-
-
-def IncreasingCyclicEta(t, eta_min, eta_max, step_1):
+def IncreasingCyclicEta(t, eta_min, eta_max, step_1, decay=1):
     """
     Computes cyclic learning rate eta_t that doubles number 
     of steps each cycle.
@@ -762,6 +477,9 @@ def IncreasingCyclicEta(t, eta_min, eta_max, step_1):
         c += 1
         step *= 2   # double steps each cycle
 
+    # decay eta_max by cycle
+    eta_max = eta_max * (decay ** c)
+
     tc = t - tc0    # cycle-local step counter
 
     if tc <= step:  
@@ -774,28 +492,32 @@ def IncreasingCyclicEta(t, eta_min, eta_max, step_1):
     return eta_t
 
 
-def RecordHistoryConvSparse(data, test_data, net, eta, t, history, eval_size=1000):
+def GetFlipIndices():
     """
-        Appends current performance statistics to history.
+        Returns indexes of an image flipped.
     """
-    trainMX_eval = data['trainMX'][:,:,:eval_size] 
-    trainy_eval = data['trainy'][:eval_size] 
-
-    P_train = ForwardConv(trainMX_eval, net)['P']
-    P_test = ForwardConv(test_data['testMX'], net)['P']
-
-    history['train_loss'].append(ComputeLoss(P_train, trainy_eval))
-    history['train_acc'].append(ComputeAccuracy(P_train, trainy_eval))
-
-    history['test_loss'].append(ComputeLoss(P_test, test_data['testy']))
-    history['test_acc'].append(ComputeAccuracy(P_test, test_data['testy']))
-
-    history['eta'].append(eta)
-    history['step'].append(t)
+    aa = np.int32(np.arange(32)).reshape((32, 1))
+    bb = np.int32(np.arange(31, -1, -1)).reshape((32, 1))
+    vv = np.tile(32 * aa, (1, 32))
+    ind_flip = vv.reshape((32 * 32, 1)) + np.tile(bb, (32, 1))
+    inds_flip = np.vstack((ind_flip, 1024 + ind_flip))
+    inds_flip = np.vstack((inds_flip, 2048 + ind_flip))     # (d, 1)
+    inds_flip = inds_flip.flatten()                         # (d,)
+    return inds_flip
 
 
+def Step(trained_net, grads, eta):
+    trained_net['Fs_flat'] -= eta * grads['Fs_flat']
+    trained_net['b_conv'] -= eta * grads['b_conv']
+    trained_net['W'][0] -= eta*grads['W'][0]
+    trained_net['b'][0] -= eta*grads['b'][0]
+    trained_net['W'][1] -= eta*grads['W'][1]
+    trained_net['b'][1] -= eta*grads['b'][1]
 
-def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smooth=False, eps=0.1):
+    return trained_net
+
+def MiniBatchGDConvBonus(data, test_data, GDparams, init_net, lam, f, 
+                         seed=42, flip=False, smooth=False, eps=0.1, decay=1):
     """
     Performs mini-batch gradient descent to train network parameters.
     Used in the "train for longer" part of exercise 3.
@@ -826,7 +548,7 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smoot
 
     trained_net = copy.deepcopy(init_net)
 
-    MX = data['trainMX']
+    X = data['trainX']
     Y = data['trainY']
     y = data['trainy']
     MX_val = data['validMX']
@@ -839,11 +561,7 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smoot
     step_1 = GDparams['step_1']
     n_cycles = GDparams['n_cycles']
 
-    n = MX.shape[2]
-
-    history = {'train_loss': [], 'train_acc': [],
-               'test_loss': [], 'test_acc': [],
-                'eta': [], 'step': []}
+    n = X.shape[1]
 
     t = 0
 
@@ -854,15 +572,16 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smoot
         t_end += 2*step
         step *= 2
 
-
     record_rate = step_1 // 2       # record every (step_1 / 2)'th step
+
+    # get data indices for flipping image
+    if flip:
+        inds_flip = GetFlipIndices()
 
     # run until all cycles done
     while t <= t_end:
         # shuffle dataset before each epoch
         perm = local_rng.permutation(n)
-        MX_epoch = MX[:, :, perm]
-        Y_epoch = Y[:, perm]
 
         for j in range(n//n_batch): # go through mini-batches
             if t > t_end:
@@ -871,14 +590,24 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smoot
             # mini batch indices
             j_start = j*n_batch
             j_end = (j+1)*n_batch
+            batch_inds = perm[j_start:j_end]
 
-            MX_batch = MX_epoch[:, :, j_start:j_end]
-            Y_batch = Y_epoch[:, j_start:j_end]
+            if flip:
+                X_batch = X[:, batch_inds].copy()   # copy if flipping
+
+                # flip each image with 0.5 chance
+                flip_mask = local_rng.random(X_batch.shape[1]) < 0.5
+                X_batch[:, flip_mask] = X_batch[inds_flip][:, flip_mask]
+            else:
+                X_batch = X[:, batch_inds]
+            Y_batch = Y[:, batch_inds]
+
+            MX_batch = MXFromX(X_batch, f)
 
             if smooth:
                 Y_batch = SmoothLabels(Y_batch, eps)
 
-            eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1)
+            eta = IncreasingCyclicEta(t, eta_min, eta_max, step_1, decay=decay)
 
             # apply mini batch
             fp_data = ForwardConv(MX_batch, trained_net)
@@ -889,16 +618,18 @@ def MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam, seed=42, smoot
             trained_net = Step(trained_net, grads, eta)
 
             if t % record_rate == 0: 
-                RecordHistoryConvSparse(data, test_data, trained_net, eta, t, history)
+
+                P_train = ForwardConv(MX_batch, trained_net)['P']
+                P_test = ForwardConv(test_data['testMX'], trained_net)['P']
+                train_acc = ComputeAccuracy(P_train, y[batch_inds])
+                test_acc = ComputeAccuracy(P_test, test_data['testy'])
                 print(f"step {t}: eta = {eta:.6f}, "
-                    f"train loss = {history['train_loss'][-1]:.6f}, "
-                    f"train acc = {history['train_acc'][-1]:.4f}, "
-                    f"test loss = {history['test_loss'][-1]:.6f}, "
-                    f"test acc = {history['test_acc'][-1]:.4f}")
+                    f"train acc = {train_acc:.4f}, "
+                    f"test acc = {test_acc:.4f}, ")
 
             t += 1
 
-    return trained_net, history
+    return trained_net
 
 
 def SmoothLabels(Y, eps):
@@ -912,373 +643,28 @@ def SmoothLabels(Y, eps):
 
 
 
-def Evaluate(trained_net, data, test_data):
-        P_train = ForwardConv(data['trainMX'], trained_net)['P']
-        train_acc = ComputeAccuracy(P_train, data['trainy'])
 
-        P_val = ForwardConv(data['validMX'], trained_net)['P']
-        val_acc = ComputeAccuracy(P_val, data['validy'])
-
-        P_test = ForwardConv(test_data['testMX'], trained_net)['P']
-        test_acc = ComputeAccuracy(P_test, test_data['testy'])
-
-        print(f"Training accuracy:   {100 * train_acc:.2f}%")
-        print(f"Validation accuracy: {100 * val_acc:.2f}%")
-        print(f"Test accuracy:       {100 * test_acc:.2f}%")
-
-        return train_acc, val_acc, test_acc
-
-
-def BuildAllMX(data, test_data, f):
-        trainMX = MXFromX(data['trainX'], f)
-        #del trainX      # to free memory
-        validMX = MXFromX(data['validX'], f)
-        #del validX      # to free memory
-        testMX = MXFromX(test_data['testX'], f)
-        #del testX       # to free memory
-
-        data['trainMX'] = trainMX
-        data['validMX'] = validMX
-        test_data['testMX'] = testMX
-
-        return data, test_data
-
-
-def StoreAllMX(data, test_data, f):
-        n = data['trainMX'].shape[2]
-
-        SaveMX(data['trainMX'], 'trainMX_n' + str(n) + '_f' + str(f) + '.npy')
-        SaveMX(data['validMX'], 'validMX_n' + str(n) + '_f' + str(f) + '.npy')
-        SaveMX(data['testMX'], 'testMX_n' + str(n) + '_f' + str(f) + '.npy')
-
-def LoadAllMX(data, test_data, n, f):
-        data['trainMX'] = LoadMX('trainMX_n' + str(n) + '_f' + str(f) + '.npy')
-        data['validMX'] = LoadMX('validMX_n' + str(n) + '_f' + str(f) + '.npy')
-        test_data['testMX'] = LoadMX('testMX_n' + str(n) + '_f' + str(f) + '.npy')
-
-        return data, test_data
-
-
-def Ex3InitialRun(data, test_data):
-        # Network shape 
-        f = 4
-        nf = 10 
-        nh = 50
+def RunArchitectureBonus(data, test_data, f, nf, nh, lam, GDparams, 
+                        flip=False, smooth=False, eps=0.1, decay=1):
         K = data['trainY'].shape[0]
 
-        # Build MX 
-        data, test_data = BuildAllMX(data, test_data, f)
-
-        # Initialize net 
-        init_net = InitializeCNN(f, nf, nh, K, seed=42)
-
-        # ------------------ Train parameters ------------------------
-        lam = 0.003
-
-        eta_min = 1e-5
-        eta_max = 1e-1
-        n_s = 800
-        n_cycles = 3
-
-        GDparams = {'n_batch': 100, 'eta_min': eta_min, 'eta_max': eta_max,
-                'n_s': n_s, 'n_cycles': n_cycles}
-
-        # -------------- Train -----------------------------------------
-        t0 = time.perf_counter()
-
-        trained_net, history = MiniBatchGDConv(data, GDparams, init_net, lam, seed=42, n_rec=10)
-
-        train_time = time.perf_counter() - t0
-        print(f"Training time: {train_time:.2f} s")
-
-        # ---------------- Evaluate -----------------------
-        Evaluate(trained_net, data, test_data)
-
-        # ............ Plot performance -------------------
-        PlotPerformance(history['step'], history['train_cost'], history['val_cost'],
-                        title='Cost plot', ylabel='cost', file_name='ex3_cost')
-
-        PlotPerformance(history['step'], history['train_loss'], history['val_loss'],
-                        title='Loss plot', ylabel='loss', file_name='ex3_loss')
-
-        PlotPerformance(history['step'], history['train_acc'], history['val_acc'],
-                        title='Accuracy plot', ylabel='accuracy', file_name='ex3_acc')
-
-
-def RunArchitecture(data, test_data, f, nf, nh, lam, GDparams, n_rec=10):
-        K = data['trainY'].shape[0]
-
-        # Build MX 
-        data, test_data = BuildAllMX(data, test_data, f)
+        # Build validation/test MX 
+        data['validMX'] = MXFromX(data['validX'], f)
+        test_data['testMX'] = MXFromX(test_data['testX'], f)
+        del data['validX'], test_data['testX']  # to free memory
 
         # Initialize net 
         init_net = InitializeCNN(f, nf, nh, K, seed=42)
 
         t0 = time.perf_counter()
 
-        trained_net, history = MiniBatchGDConv(data, GDparams, init_net, lam, seed=42, n_rec=n_rec)
+        trained_net = MiniBatchGDConvBonus(data, test_data, GDparams, init_net, lam, f,
+                                                    seed=42,flip=True, smooth=smooth, eps=eps, decay=decay)
 
         train_time = time.perf_counter() - t0
         print(f"Training time: {train_time:.2f} s")
 
-        train_acc, val_acc, test_acc  = Evaluate(trained_net, data, test_data)
-
-        del data['trainMX'], data['validMX'], test_data['testMX']       # to free memory
-
-        return history, train_acc, val_acc, test_acc, train_time
-
-
-def Ex3Comparisons(data, test_data):
-        lam = 0.003
-
-        GDparams = {'n_batch': 100, 'eta_min': 1e-5, 'eta_max': 1e-1,
-        'n_s': 800, 'n_cycles': 3}
-
-        architectures = [{'label': 'A1', 'f': 2,  'nf': 3, 'nh': 50},
-                         {'label': 'A2', 'f': 4,  'nf': 10, 'nh': 50},
-                         {'label': 'A3', 'f': 8,  'nf': 40, 'nh': 50},
-                         {'label': 'A4', 'f': 16, 'nf': 160, 'nh': 50},]
-        
-        test_accuracies = []
-        train_times = []
-        
-        for arch in architectures:
-                print(f"\nRunning {arch['label']}: f={arch['f']}, nf={arch['nf']}, nh={arch['nh']}")
-                _, _, _, test_acc, train_time = RunArchitecture(data, test_data,
-                                                                 arch['f'], arch['nf'], arch['nh'],
-                                                                 lam, GDparams, n_rec=10)
-                
-                test_accuracies.append(test_acc)
-                train_times.append(train_time)
-        
-        return test_accuracies, train_times
-
-
-def Ex3PlotBars(test_accuracies, train_times):
-        labels = ['A1', 'A2', 'A3', 'A4']
-
-        plt.figure()
-        plt.bar(labels, [100 * acc for acc in test_accuracies])
-        plt.ylabel('Test accuracy (%)')
-        plt.title('Test accuracy per architecture')
-        plt.savefig('./images/test_acc_bar')
-        plt.show()
-
-        plt.figure()
-        plt.bar(labels, train_times)
-        plt.ylabel('Training time (s)')
-        plt.title('Training time per architecture')
-        plt.savefig('./images/train_time_bar')
-        plt.show()
-
-
-
-def RunArchitectureLong(data, test_data, f, nf, nh, lam, GDparams, smooth=False, eps=0.1):
-        K = data['trainY'].shape[0]
-
-        # Build MX 
-        data, test_data = BuildAllMX(data, test_data, f)
-
-        # Initialize net 
-        init_net = InitializeCNN(f, nf, nh, K, seed=42)
-
-        t0 = time.perf_counter()
-
-        trained_net, history = MiniBatchGDConvLong(data, test_data, GDparams, init_net, lam,
-                                                    seed=42, smooth=smooth, eps=eps)
-
-        train_time = time.perf_counter() - t0
-        print(f"Training time: {train_time:.2f} s")
-
-        train_acc, val_acc, test_acc  = Evaluate(trained_net, data, test_data)
-
-        del data['trainMX'], data['validMX'], test_data['testMX']       # to free memory
-
-        return history, train_acc, val_acc, test_acc, train_time
-
-
-def PlotTrainTestLoss(history, title, filename):
-    plt.figure()
-    plt.plot(history['step'], history['train_loss'], label='training loss')
-    plt.plot(history['step'], history['test_loss'], label='test loss')
-    plt.xlabel('update step')
-    plt.ylabel('loss')
-    plt.title(title)
-    plt.legend()
-    plt.grid(True)
-    plt.savefig('./images/'+filename)
-    plt.close()
-
-
-def Ex3TrainForLonger(data, test_data):
-        lam = 0.003
-
-        GDparams = {'n_batch': 100, 'eta_min': 1e-5, 'eta_max': 1e-1,
-        'step_1': 800, 'n_cycles': 3}
-
-
-        architectures = [{'label': 'A2', 'f': 4,  'nf': 10, 'nh': 50},
-                         {'label': 'A3', 'f': 8,  'nf': 40, 'nh': 50},
-                         {'label': 'A2 wide', 'f': 4,  'nf': 40, 'nh': 50}]
-
-        test_accuracies = {}
-        
-        for arch in architectures:
-                print(f"\nRunning {arch['label']}: f={arch['f']}, nf={arch['nf']}, nh={arch['nh']}")
-                history, _, _, test_acc, _ = RunArchitectureLong(data, test_data,
-                                                                 arch['f'], arch['nf'], arch['nh'],
-                                                                 lam, GDparams)
-                PlotTrainTestLoss(history, arch['label'] + ' loss', arch['label']+'_loss_long')
-                test_accuracies[arch['label']] = test_acc
-        
-        print()
-        for label in test_accuracies.keys():
-                print(f"{label} : test accuracy = {test_accuracies[label]}")
-        
         return
-
-
-def Ex4(data, test_data):
-        f = 4
-        nf = 40
-        nh = 300
-
-        GDparams = {'n_batch': 100, 'eta_min': 1e-5, 'eta_max': 1e-1,
-        'step_1': 800, 'n_cycles': 4}
-
-        lam = 0.0025
-
-        #print("Running archictecture 5 without smoothing")
-        #history, _, _, test_acc, _ = RunArchitectureLong(data, test_data, f, nf, nh,
-        #                                                 lam, GDparams)
-        #PlotTrainTestLoss(history, 'A5 loss, no smoothing', 'A5_loss_no_smoothing')
-
-        
-        #print(f"No smoothing: test accuracy = {100*test_acc}")
-
-        lam = 0.0025
-
-        print("Running archictecture 5 with smoothing")
-        history, _, _, test_acc, _ = RunArchitectureLong(data, test_data, f, nf, nh,
-                                                         lam, GDparams,smooth=True, eps=0.1)
-        PlotTrainTestLoss(history, 'A5 loss, with smoothing', 'A5_loss_smoothing')
-
-        
-        print(f"Smoothing: test accuracy = {100*test_acc}")
-        
-        return
-
-
-############### DEBUGGING PART ##########################################
-
-# ------------ Exercise 1 -------------------------
-"""
-
-# ---------- Slow convolution
-
-X_ims, debug_data = LoadDebugData()
-Fs = debug_data['Fs'].astype(np.float32)
-conv_out_true = debug_data['conv_outputs'].astype(np.float32)
-conv_out_slow = SlowConv(X_ims, Fs)
-
-print("slow conv_out diff: ", np.max(np.abs(conv_out_slow - conv_out_true)))
-
-
-# --------- Fast convolution
-
-f = Fs.shape[0]
-MX = BuildMX(X_ims, f)
-Fs_flat = FlattenFilters(Fs)
-
-conv_out_mat = Conv(MX, Fs_flat)
-
-n_p, _, n = MX.shape
-nf = Fs_flat.shape[1]
-
-conv_out_slow_flat =  conv_out_slow.reshape((n_p, nf, n), order='C')
-
-print("MX diff: ", np.max(np.abs(MX-debug_data['MX'])))
-print("Fs_flat diff: ", np.max(np.abs(Fs_flat - debug_data['Fs_flat'])))
-print("conv_outputs_mat diff: ", np.max(np.abs(conv_out_mat-debug_data['conv_outputs_mat'])))
-print("conv slow vs fast diff: ", np.max(np.abs(conv_out_mat-conv_out_slow_flat)))
-
-
-
-# --------------- Exercise 2 -----------------------------------
-
-# ----------- Forward Pass
-
-debug_network = {'Fs_flat': Fs_flat, 
-                 'W': [debug_data['W1'], debug_data['W2']],
-                 'b': [debug_data['b1'], debug_data['b2']]}
-
-fp_data = ForwardConv(MX, debug_network)
-
-print("conv_flat diff: ", 
-      np.max(np.abs(fp_data['conv_flat'] - debug_data['conv_flat'])))
-print("X1 diff: ",
-      np.max(np.abs(fp_data['X1'] - debug_data['X1'])))
-print("P diff: ",
-      np.max(np.abs(fp_data['P'] - debug_data['P'])))
-
-
-# ----------- Backward Pass
-
-Y = debug_data['Y']
-
-grads = BackwardConv(MX, Y, fp_data, debug_network, lam=0)
-
-print("grads_Fs_flat diff: ",
-      np.max(np.abs(grads['Fs_flat'] - debug_data['grad_Fs_flat'])))
-"""
-
-# ---------------- Torch gradient check ------------------------------
-
-"""
-
-cifar_dir = '../Datasets/cifar-10-batches-py/'
-
-trainX, trainY, trainy = LoadBatch(cifar_dir +  'data_batch_1')
-
-f = 4
-
-trainMX = MXFromX(trainX, f)
-
-n_small = 3
-MX_small = trainMX[:, :, :n_small]
-Y_small = trainY[:, :n_small]
-y_small = trainy[:n_small]
-
-
-nf = 2
-nh = 5
-K = trainY.shape[0]
-lam = 0
-
-init_net = InitializeCNN(f, nf, nh, K, seed=42)
-
-fp_data = ForwardConv(MX_small, init_net)
-grads = BackwardConv(MX_small, Y_small, fp_data, init_net, lam)
-torch_grads = ComputeGradsWithTorch(MX_small, y_small, init_net)
-
-print('Torch comparison: ')
-print("grad_Fs_flat diff:",
-      np.max(np.abs(grads['Fs_flat'] - torch_grads['Fs_flat'])))
-print("grad_W1 diff:",
-      np.max(np.abs(grads['W'][0] - torch_grads['W'][0])))
-print("grad_W2 diff:",
-      np.max(np.abs(grads['W'][1] - torch_grads['W'][1])))
-print("grad_b1 diff:",
-      np.max(np.abs(grads['b'][0] - torch_grads['b'][0])))
-print("grad_b2 diff:",
-      np.max(np.abs(grads['b'][1] - torch_grads['b'][1])))
-print("grad_b_conv diff:",
-      np.max(np.abs(grads['b_conv'] - torch_grads['b_conv'])))
-
-"""
-
-############ END OF DEBUGGING PART #############################################
-
 
 # ------- Load data ----------------------------------------------------
 
@@ -1333,11 +719,18 @@ test_data = {'testX': testX, 'testY': testY, 'testy':testy}
 
 # ------------------------ Runs -------------------
 
-#Ex3InitialRun(data, test_data)
+f = 4
+nf = 60
+nh = 300
+lam = 0.0025
 
-#test_accuracies, train_times = Ex3Comparisons(data, test_data)
-#Ex3PlotBars(test_accuracies, train_times)
+GDparams = {
+    'n_batch': 100,
+    'eta_min': 1e-5,
+    'eta_max': 1e-1,
+    'step_1': 800,
+    'n_cycles': 1
+}
 
-#Ex3TrainForLonger(data, test_data)
-
-Ex4(data, test_data)
+RunArchitectureBonus(data, test_data, f, nf, nh, lam, GDparams,
+                     flip=True, smooth=True, eps=0.1, decay=1)
