@@ -32,7 +32,7 @@ def InitializeRNN(K, m, seed=42):
 
 
 
-def Softmax(ot):
+def SoftMax(ot):
     """
     Applies softmax.
 
@@ -43,3 +43,81 @@ def Softmax(ot):
     """
     exp_ot = np.exp(ot)
     return exp_ot/np.sum(exp_ot, axis=0)
+
+
+
+def Synthesize(RNN, h0, x0, n, rng):
+    """
+    Synthesize text from initial input.
+
+    Args:
+        RNN: dict of weights/biases of RNN
+        h0: initial hidden state, (m, 1)
+        x0: initial input, one hot encoded char index, (K, 1)
+        n: length of synthesized text
+        rng:  random number generator for label sampling
+    Returns:
+        Y: synthesized sequence as one-hot encoded indices (K, n)
+    """
+
+    K = x0.shape[0]
+
+    Y = np.zeros((K, n))
+
+    h = h0
+    x = x0
+
+    for t in range(n):
+        # eq. 1: a_t = W*h_{t-1} + U*x_t  + b
+        a = RNN['W'] @ h + RNN['U'] @ x + RNN['b']
+        # eq. 2: h_t = tanh(a_t)
+        h = np.tanh(a)
+        # eq. 3: o_t = V*h_t + c
+        o = RNN['V'] @ h + RNN['c']
+        # eq. 4: p_t = SoftMax(o_t)
+        p = SoftMax(o)
+
+        # Sample label from probabilities
+        cp = np.cumsum(p, axis=0)
+        a = rng.uniform(size=1)
+        ii = np.argmax(cp - a > 0)
+
+        # predicted x_{t+1} as one-hot encoded
+        xnext = np.zeros((K, 1))
+        xnext[ii] = 1
+
+        # save prediction at step t
+        Y[:, t] = xnext[:, 0]  
+
+        x = xnext
+
+    return Y
+
+
+def YtoString(Y, ind_to_char):
+    """
+    Convert one-hot encoded char index sequence to string.
+
+    Args:
+        Y: sequence as one-hot encoded char indices (K, n)
+    Returns: 
+        text: Y converted into string
+    """
+    n = Y.shape[0]
+
+    text = ""
+
+    for i in range(n):
+        y = Y[:, i]
+        idx = np.argmax(y)
+        c = ind_to_char[idx]
+        text = text + c
+    
+    return text
+
+
+
+
+
+
+
