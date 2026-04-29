@@ -30,8 +30,13 @@ x0[char_to_ind['.']] = 1
 Y = Synthesize(RNN, h0, x0, n, rng)
 
 print("Generated text: ")
-print(YtoString(Y, ind_to_char))
+print(OneHotToStr(Y, ind_to_char))
 print("------------------")
 
 # --------------- Exercise 0.4: Forward & backward pass ------------------------
+
+seq_length = 10
+
+X_chars = book_data[0:seq_length]
+Y_chars = book_data[1:seq_length+1]
 

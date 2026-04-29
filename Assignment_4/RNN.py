@@ -94,26 +94,71 @@ def Synthesize(RNN, h0, x0, n, rng):
     return Y
 
 
-def YtoString(Y, ind_to_char):
+
+def ForwardPass(X, Y, RNN, h0):
     """
-    Convert one-hot encoded char index sequence to string.
+    Forward pass for RNN.
 
     Args:
-        Y: sequence as one-hot encoded char indices (K, n)
-    Returns: 
-        text: Y converted into string
+        X: input one-hot encoded char index sequence, (K, seq_length)
+        Y: target one-hot encoded char index sequence, (K, seq_length)
+        RNN: dict of RNN params
+        h0: initial hidden state, m x 1
+    Returns:
+        loss: avg cross entropy loss
+        fp: dict of intermediate values for backprop
     """
-    n = Y.shape[0]
 
-    text = ""
+    K, seq_length = X.shape
+    m = h0.shape[0]
 
-    for i in range(n):
-        y = Y[:, i]
-        idx = np.argmax(y)
-        c = ind_to_char[idx]
-        text = text + c
+    # matrices for intermediete values
+    A = np.zeros((m, seq_length))
+    H = np.zeros((m, seq_length + 1))
+    O = np.zeros((K, seq_length))
+    P = np.zeros((K, seq_length))
+
+    # using H[:, 0:1] instead of H[:, 0] to get
+    # shape (m, 1) instead of (m,)
+    H[:, 0:1] = h0
     
-    return text
+    loss = 0
+
+    for t in range(seq_length):
+        x = X[:, t:t+1]
+        y = Y[:, t:t+1]
+        h = H[:, t:t+1]
+
+        # eq. 1: a_t = W*h_{t-1} + U*x_t  + b
+        a = RNN['W'] @ h + RNN['U'] @ x + RNN['b']
+        # eq. 2: h_t = tanh(a_t)
+        h = np.tanh(a)
+        # eq. 3: o_t = V*h_t + c
+        o = RNN['V'] @ h + RNN['c']
+        # eq. 4: p_t = SoftMax(o_t)
+        p = SoftMax(o)
+
+        # save intermediate values
+        A[:, t:t+1] = a
+        H[:, t+1:t+2] = h
+        O[:, t:t+1] = o
+        P[:, t:t+1] = p
+
+        # add cross entropy loss for step t
+        loss += -np.log(np.sum(y*p))
+
+    # average loss
+    loss = loss / seq_length
+
+    fp = {}
+    fp['A'] = A
+    fp['H'] = H
+    fp['O'] = O
+    fp['P'] = P
+
+    return loss, fp
+
+
 
 
 
