@@ -36,7 +36,7 @@ print("------------------")
 
 # --------------- Exercise 0.4: Forward & backward pass ------------------------
 
-
+"""
 X_chars = book_data[0:seq_length]
 Y_chars = book_data[1:seq_length+1]
 
@@ -49,4 +49,19 @@ loss, fp = ForwardPass(X, Y, RNN, h0)
 grads = BackwardPass(X, Y, RNN, fp)
 
 print("loss: ", loss)
+"""
+
+# --------------- Exercise 0.4: Forward & backward pass ------------------------
+
+n_updates = 100000
+
+RNN, smooth_losses = TrainRNN(
+    book_data,
+    char_to_ind,
+    ind_to_char,
+    RNN,
+    eta,
+    seq_length,
+    n_updates)
+
 

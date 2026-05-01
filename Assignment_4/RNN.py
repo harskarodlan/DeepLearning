@@ -253,7 +253,7 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
     K = len(char_to_ind)
     m = RNN['W'].shape[0]
 
-    m_adam, v_adam = InitAdam()
+    m_adam, v_adam = InitAdam(RNN)
 
     hprev = np.zeros((m,1))
     smooth_loss = None
