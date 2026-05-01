@@ -159,10 +159,70 @@ def ForwardPass(X, Y, RNN, h0):
     return loss, fp
 
 
+def BackwardPass(X, Y, RNN, fp):
+    """
+    Backward pass for vanilla RNN.
 
+    Args:
+        RNN: dict of RNN params
+        fp: dict of intermediate values from forward pass
+    Returns:
+        grads: dict of gradients
+    """
 
+    H = fp['H']
+    P = fp['P']
 
+    K, seq_length = X.shape
+    m = H.shape[0]
 
+    grads = {}
+    grads['b'] = np.zeros_like(RNN['b'])    # (m,1)
+    grads['c'] = np.zeros_like(RNN['c'])    # (K,1)
+    grads['U'] = np.zeros_like(RNN['U'])    # (m,K)
+    grads['W'] = np.zeros_like(RNN['W'])    # (m,m)
+    grads['V'] = np.zeros_like(RNN['V'])    # (K,m)
 
+    grad_anext = np.zeros((m, 1)) 
+
+    #  for t = seq_length - 1, ..., 0
+    for t in reversed(range(seq_length)):
+        x = X[:, t:t+1]     # (K,1)
+        y = Y[:, t:t+1]     # (K,1)
+        p = P[:, t:t+1]     # (K,1)
+
+        h = H[:, t+1:t+2]   # (m,1)
+        hprev = H[:, t:t+1] # (m,1)
+
+        # Lec 8 slide 32: dL/dot = -(yt - pt)^T
+        # then avg over sequence
+        grad_o = (p -y)/seq_length  # (K,1)
+
+        # Lec 8 slide 33: dL/dV = sum_t gt^T*ht^T
+        # with gt = grad_o
+        grads['V'] += grad_o @ h.T  # (K,m)
+        
+        grads['c'] += grad_o        # (K,1)
+
+        # Lec 8 slide 37: dL/dht = dL/dot * V + dL/a_{t+1} * W
+        # (m,K)*(K,1) + (m,m)*(m,1)
+        grad_h = RNN['V'].T @ grad_o + RNN['W'].T @ grad_anext # (m,1)
+        # Lec 8 slide 37: dL/dat = dL/dht * diag(1-tanh²(at))
+        grad_a = grad_h * (1-h**2)                 # (m,1)
+
+        grads['b'] += grad_a
+
+        # Lec 8 slide 33: dL/dW = sum_t gt^T*h_{t-1}^T
+        # with gt = grad_a
+        grads['W'] += grad_a @ hprev.T
+    
+        # Lec 8 slide 39: dL/dU = sum_t gt^T*xt^T
+        # with gt = grad_a
+        grads['U'] += grad_a @ x.T
+
+        # dL/da_{t+1}
+        grad_anext = grad_a
+
+    return grads
 
 
