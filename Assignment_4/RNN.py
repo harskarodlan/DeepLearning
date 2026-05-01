@@ -1,4 +1,6 @@
 import numpy as np
+from optimizer import InitAdam, AdamStep
+from data_handling import StrToOneHot, OneHotToStr
 
 def InitializeRNN(K, m, seed=42):
     """
@@ -222,7 +224,81 @@ def BackwardPass(X, Y, RNN, fp):
 
         # dL/da_{t+1}
         grad_anext = grad_a
+    
+    # clip to avoid exploding gradients
+    for kk in grads.keys():
+        grads[kk] = np.clip(grads[kk], -5, 5)
 
     return grads
 
 
+
+def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_updates, seed=42):
+    """
+    Train RNN using Adam optimizer.
+
+    Args:
+        book_data: full training text
+        char_to_ind: dict mapping character -> index
+        ind_to_char: dict mapping index -> character
+        RNN: dict of RNN params
+        eta: learning rate
+        seq_length: sequence length for each update step
+        n_updates: number of update steps
+    Returns:
+        RNN: trained RNN params
+        smooth_losses: list of smooth loss values
+    """
+
+    K = len(char_to_ind)
+    m = RNN['W'].shape[0]
+
+    m_adam, v_adam = InitAdam()
+
+    hprev = np.zeros((m,1))
+    smooth_loss = None
+    smooth_losses = []
+    e = 0
+
+    rng = np.random.default_rng(seed)
+
+    for t in range(1, n_updates+1):
+        # if finished 1 epoch = 1 run through whole book_data
+        if e + seq_length + 1 >= len(book_data):
+            e = 0   # reset cursor
+            hprev = np.zeros((m,1)) # reset input hidden state
+        
+        X_chars = book_data[0:seq_length]
+        Y_chars = book_data[1:seq_length+1]
+
+        X = StrToOneHot(X_chars, char_to_ind, K)
+        Y = StrToOneHot(Y_chars, char_to_ind, K)
+
+
+        loss, fp = ForwardPass(X, Y, RNN, hprev)
+        grads = BackwardPass(X, Y, RNN, fp)
+
+        RNN, m_adam, v_adam = AdamStep(RNN, grads, m_adam, v_adam, t, eta,)
+
+        hprev = fp['H'][:,-1:]
+
+        if smooth_loss is None:
+            smooth_loss = loss
+        else:
+            smooth_loss = .999* smooth_loss + .001 * loss
+        smooth_losses.append(smooth_loss)
+
+        e += seq_length
+
+        if t % 100 == 0:
+            print("update:", t, "smooth loss:", smooth_loss)
+
+        if t % 10000 == 0:
+            x0 = X[:, 0:1]
+            Y_sample = Synthesize(RNN, hprev, x0, 200, rng)
+
+            print("synthesized text at update", t, ": ")
+            print(OneHotToStr(Y_sample, ind_to_char))
+            print("------------------------------------------")
+
+    return RNN, smooth_losses
