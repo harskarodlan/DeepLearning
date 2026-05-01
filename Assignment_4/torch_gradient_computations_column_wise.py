@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 # assumes X has size d x tau, h0 has size m x 1, etc
 def ComputeGradsWithTorch(X, y, h0, RNN):
@@ -30,6 +31,12 @@ def ComputeGradsWithTorch(X, y, h0, RNN):
         # Store results in Hs
 
         # Don't forget to update hprev!
+
+        a = (torch.matmul(torch_network['W'], hprev) + 
+             torch.matmul(torch_network['U'], Xt[:, t:t+1]) + torch_network['b'])
+        h = apply_tanh(a)
+        Hs[:, t:t+1] = h
+        hprev = h
         
         #### END of your code ######            
 
