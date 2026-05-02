@@ -263,6 +263,7 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
     rng = np.random.default_rng(seed)
 
     for t in range(1, n_updates+1):
+
         # if finished 1 epoch = 1 run through whole book_data
         if e + seq_length + 1 >= len(book_data):
             e = 0   # reset cursor
@@ -273,6 +274,14 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
 
         X = StrToOneHot(X_chars, char_to_ind, K)
         Y = StrToOneHot(Y_chars, char_to_ind, K)
+
+        if t == 1 or t % 10000 == 0:
+            x0 = X[:, 0:1]
+            Y_sample = Synthesize(RNN, hprev, x0, 200, rng)
+
+            print("synthesized text at update", t, ": ")
+            print(OneHotToStr(Y_sample, ind_to_char))
+            print("------------------------------------------")
 
 
         loss, fp = ForwardPass(X, Y, RNN, hprev)
@@ -292,13 +301,5 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
 
         if t % 100 == 0:
             print("update:", t, "smooth loss:", smooth_loss)
-
-        if t % 10000 == 0:
-            x0 = X[:, 0:1]
-            Y_sample = Synthesize(RNN, hprev, x0, 200, rng)
-
-            print("synthesized text at update", t, ": ")
-            print(OneHotToStr(Y_sample, ind_to_char))
-            print("------------------------------------------")
 
     return RNN, smooth_losses

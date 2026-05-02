@@ -2,6 +2,7 @@ import numpy as np
 
 from data_handling import *
 from RNN import *
+from plotting import PlotSmoothLoss
 
 # ---------- Exercise 0.1: Read in the data ---------------------------------
 
@@ -65,3 +66,4 @@ RNN, smooth_losses = TrainRNN(
     n_updates)
 
 
+PlotSmoothLoss(smooth_losses, 'smooth_loss')
