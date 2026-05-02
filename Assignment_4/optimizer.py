@@ -22,7 +22,7 @@ def InitAdam(RNN):
     return m, v
 
 
-def AdamStep(RNN, grads, m, v, t, eta, beta1=0.1,beta2=0.999, eps=1e-8):
+def AdamStep(RNN, grads, m, v, t, eta, beta1=0.9,beta2=0.999, eps=1e-8):
     """
     Updates RNN using Adam optimizer.
 

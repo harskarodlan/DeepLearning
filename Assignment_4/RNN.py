@@ -268,8 +268,8 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
             e = 0   # reset cursor
             hprev = np.zeros((m,1)) # reset input hidden state
         
-        X_chars = book_data[0:seq_length]
-        Y_chars = book_data[1:seq_length+1]
+        X_chars = book_data[e:e+seq_length]
+        Y_chars = book_data[e+1:e+seq_length+1]
 
         X = StrToOneHot(X_chars, char_to_ind, K)
         Y = StrToOneHot(Y_chars, char_to_ind, K)
