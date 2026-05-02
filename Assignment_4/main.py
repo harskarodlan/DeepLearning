@@ -52,11 +52,11 @@ grads = BackwardPass(X, Y, RNN, fp)
 print("loss: ", loss)
 """
 
-# --------------- Exercise 0.4: Forward & backward pass ------------------------
+# --------------- Exercise 0.5: Train ------------------------
 
 n_updates = 100000
 
-RNN, smooth_losses = TrainRNN(
+RNN, best_RNN, smooth_losses, best_loss = TrainRNN(
     book_data,
     char_to_ind,
     ind_to_char,
@@ -67,3 +67,19 @@ RNN, smooth_losses = TrainRNN(
 
 
 PlotSmoothLoss(smooth_losses, 'smooth_loss')
+
+# --------------- Synthesize text from best model -----------------
+ 
+rng = np.random.default_rng(seed=42)
+
+h0 = np.zeros(m,1)
+
+x0 = np.zeros((K,1))
+x0[char_to_ind['.']] = 1
+
+Y = Synthesize(RNN, h0, x0, 1000, rng)
+
+print("synthesized text from best model: ")
+print(OneHotToStr(Y, ind_to_char))
+print("------------------------------------------")
+print("Best smooth loss:", best_loss)

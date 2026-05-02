@@ -1,6 +1,7 @@
 import numpy as np
 from optimizer import InitAdam, AdamStep
 from data_handling import StrToOneHot, OneHotToStr
+import copy
 
 def InitializeRNN(K, m, seed=42):
     """
@@ -260,6 +261,9 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
     smooth_losses = []
     e = 0
 
+    best_loss = np.inf
+    best_RNN = copy.deepcopy(RNN)
+
     rng = np.random.default_rng(seed)
 
     for t in range(1, n_updates+1):
@@ -297,9 +301,13 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
             smooth_loss = .999* smooth_loss + .001 * loss
         smooth_losses.append(smooth_loss)
 
+        if smooth_loss < best_loss:
+            best_loss = smooth_loss
+            best_RNN = copy.deepcopy(RNN)
+
         e += seq_length
 
         if t % 100 == 0:
             print("update:", t, "smooth loss:", smooth_loss)
 
-    return RNN, smooth_losses
+    return RNN, best_RNN, smooth_losses, best_loss
