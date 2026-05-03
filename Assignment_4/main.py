@@ -56,6 +56,12 @@ print("loss: ", loss)
 
 n_updates = 100000
 
+updates_per_epoch = (len(book_data) - 1) // seq_length
+epochs = n_updates / updates_per_epoch
+
+print("updates per epoch:", updates_per_epoch)
+print("epochs:", epochs)
+
 RNN, best_RNN, smooth_losses, best_loss = TrainRNN(
     book_data,
     char_to_ind,

@@ -1,7 +1,142 @@
 import numpy as np
-from optimizer import InitAdam, AdamStep
-from data_handling import StrToOneHot, OneHotToStr
 import copy
+import matplotlib.pyplot as plt
+
+
+def LoadBookData(book_dir="./"):
+    """
+    Loads book text from text file.
+
+    Args:
+        book_dir: directory of book text file
+    Returns:
+        book_data: string of complete book text
+        unique_chars: list of unique characters
+        char_to_ind: dict mapping character -> index
+        ind_to_char: dict mapping index -> character
+    """
+
+    book_fname = book_dir + 'goblet_book.txt'
+    fid = open(book_fname, "r")
+    book_data = fid.read()
+    fid.close()
+
+    unique_chars = list(set(book_data))
+
+    K = len(unique_chars)
+
+    char_to_ind = {}
+    ind_to_char = {}
+
+    for i in range(K):
+        c = unique_chars[i]
+        char_to_ind[c] = i
+        ind_to_char[i] = c
+    
+    return book_data, unique_chars, char_to_ind, ind_to_char 
+
+
+
+def OneHotToStr(X, ind_to_char):
+    """
+    Convert one-hot encoded char index sequence to string.
+
+    Args:
+        X: sequence as one-hot encoded char indices (K, n)
+        ind_to_char: dict mapping index -> character
+    Returns: 
+        text: X converted into string
+    """
+    n = X.shape[1]
+
+    text = ""
+
+    for i in range(n):
+        x = X[:, i]
+        idx = np.argmax(x)
+        c = ind_to_char[idx]
+        text = text + c
+    
+    return text
+
+
+
+def StrToOneHot(text, char_to_ind, K):
+    """
+    Convert string to one-hot encoded char index sequence.
+
+    Args:
+        text: string of character sequence
+        char_to_ind: dict mapping character -> index
+        K: num of unique characters
+    Returns: 
+        X: text as one-hot encoded char indices (K, n)
+    """
+    n =  len(text)
+
+    X = np.zeros((K, n))
+
+    for i in range(n):
+        c = text[i]
+        idx = char_to_ind[c]
+        X[idx, i] = 1
+    
+    return X
+
+
+def InitAdam(RNN):
+    """
+    Initializes Adam variables.
+
+    Args:
+        RNN: dict of RNN params
+    Returns:
+        m: mean estimate
+        v: variance estimate
+    """
+
+    m = {}
+    v = {}
+
+    for kk in RNN.keys():
+        m[kk] = np.zeros_like(RNN[kk])
+        v[kk] = np.zeros_like(RNN[kk])
+
+    return m, v
+
+
+def AdamStep(RNN, grads, m, v, t, eta, beta1=0.9,beta2=0.999, eps=1e-8):
+    """
+    Updates RNN using Adam optimizer.
+
+    Args:
+        RNN: dict of RNN params
+        grads: dict of gradients
+        m: mean estimates
+        v: variance estimates
+        t: update step
+        eta: learning rate
+        beta1, beta2, eps: adam params
+    Returns:
+        RNN: updated RNN params
+        m: updates mean estimates
+        v: updated variance estimates
+    """
+
+    for kk in grads.keys():
+        m[kk] = beta1*m[kk] + (1-beta1)*grads[kk]
+        v[kk] = beta2*v[kk] + (1-beta2)*(grads[kk]**2)
+
+        m_hat = m[kk]/(1-beta1**t)
+        v_hat = v[kk]/(1-beta2**t)
+
+        RNN[kk] = RNN[kk] - eta*m_hat/(np.sqrt(v_hat)+eps)
+    
+    return RNN, m, v
+
+
+
+
 
 def InitializeRNN(K, m, seed=42):
     """
@@ -326,3 +461,204 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
 
     synth_file.close()
     return RNN, best_RNN, smooth_losses, best_loss
+
+
+
+def PlotSmoothLoss(smooth_losses, filename):
+
+    plt.figure()
+    plt.plot(smooth_losses)
+    plt.xlabel("Update step")
+    plt.ylabel("Smooth loss")
+    plt.savefig('./images/'+filename)
+    plt.show()
+
+################### DEBUGGING PART ##############################################
+
+""""
+import torch
+
+# assumes X has size d x tau, h0 has size m x 1, etc
+def ComputeGradsWithTorch(X, y, h0, RNN):
+
+    tau = X.shape[1]
+
+    Xt = torch.from_numpy(X)
+    ht = torch.from_numpy(h0)
+
+    torch_network = {}
+    for kk in RNN.keys():
+        torch_network[kk] = torch.tensor(RNN[kk], requires_grad=True)
+
+
+    ## give informative names to these torch classes        
+    apply_tanh = torch.nn.Tanh()
+    apply_softmax = torch.nn.Softmax(dim=0) 
+    
+    # create an empty tensor to store the hidden vector at each timestep
+    Hs = torch.empty(h0.shape[0], X.shape[1], dtype=torch.float64)
+    
+    hprev = ht
+    for t in range(tau):
+
+        #### BEGIN your code ######
+
+        # Code to apply the RNN to hprev and Xt[:, t:t+1] to compute the hidden scores "Hs" at timestep t
+        # (ie equations (1,2) in the assignment instructions)
+        # Store results in Hs
+
+        # Don't forget to update hprev!
+
+        a = (torch.matmul(torch_network['W'], hprev) + 
+             torch.matmul(torch_network['U'], Xt[:, t:t+1]) + torch_network['b'])
+        h = apply_tanh(a)
+        Hs[:, t:t+1] = h
+        hprev = h
+        
+        #### END of your code ######            
+
+    Os = torch.matmul(torch_network['V'], Hs) + torch_network['c']        
+    P = apply_softmax(Os)    
+    
+    # compute the loss
+    
+    loss = torch.mean(-torch.log(P[y, np.arange(tau)]))
+    
+    # compute the backward pass relative to the loss and the named parameters 
+    loss.backward()
+
+    # extract the computed gradients and make them numpy arrays
+    grads = {}
+    for kk in RNN.keys():
+        grads[kk] = torch_network[kk].grad.numpy()
+
+    return grads
+
+
+book_data, unique_chars, char_to_ind, ind_to_char = LoadBookData()
+
+K = len(unique_chars)
+m = 10
+eta = 0.001
+seq_length = 25
+
+RNN = InitializeRNN(K, m)
+
+X_chars = book_data[0:seq_length]
+Y_chars = book_data[1:seq_length+1]
+
+X = StrToOneHot(X_chars, char_to_ind, K)
+Y = StrToOneHot(Y_chars, char_to_ind, K)
+
+h0 = np.zeros((m,1))
+
+loss, fp = ForwardPass(X, Y, RNN, h0)
+grads = BackwardPass(X, Y, RNN, fp)
+
+# Y = one hot labels ==> y = integer labels
+y = np.argmax(Y, axis=0)
+
+torch_grads = ComputeGradsWithTorch(X, y, h0, RNN)
+
+for kk in grads.keys():
+    diff = np.max(np.abs(grads[kk] - torch_grads[kk]))
+    print(kk)
+    print("max abs diff:", diff)
+
+"""
+
+############ END OF DEBUGGING PART ###################################
+
+# ---------- Exercise 0.1: Read in the data ---------------------------------
+
+book_data, unique_chars, char_to_ind, ind_to_char = LoadBookData()
+
+
+# ---------- Exercise 0.2:  Hyper-parameters & Initilization ----------------
+
+K = len(unique_chars)
+m = 100
+eta = 0.001
+seq_length = 25
+
+RNN = InitializeRNN(K, m)
+
+# --------------- Exercise 0.3:  Synthesize text ------------------------
+"""
+rng = np.random.default_rng(42)
+
+n = 200
+
+h0 = np.zeros((m, 1))
+x0 = np.zeros((K, 1))
+x0[char_to_ind['.']] = 1
+
+Y = Synthesize(RNN, h0, x0, n, rng)
+
+print("Generated text: ")
+print(OneHotToStr(Y, ind_to_char))
+print("------------------")
+"""
+
+# --------------- Exercise 0.4: Forward & backward pass ------------------------
+
+"""
+X_chars = book_data[0:seq_length]
+Y_chars = book_data[1:seq_length+1]
+
+X = StrToOneHot(X_chars, char_to_ind, K)
+Y = StrToOneHot(Y_chars, char_to_ind, K)
+
+h0 = np.zeros((m,1))
+
+loss, fp = ForwardPass(X, Y, RNN, h0)
+grads = BackwardPass(X, Y, RNN, fp)
+
+print("loss: ", loss)
+"""
+
+# --------------- Exercise 0.5: Train ------------------------
+
+n_updates = 100000
+
+updates_per_epoch = (len(book_data) - 1) // seq_length
+epochs = n_updates / updates_per_epoch
+
+print("updates per epoch:", updates_per_epoch)
+print("epochs:", epochs)
+
+RNN, best_RNN, smooth_losses, best_loss = TrainRNN(
+    book_data,
+    char_to_ind,
+    ind_to_char,
+    RNN,
+    eta,
+    seq_length,
+    n_updates)
+
+
+PlotSmoothLoss(smooth_losses, 'smooth_loss.png')
+
+# --------------- Synthesize text from best model -----------------
+ 
+rng = np.random.default_rng(seed=42)
+
+h0 = np.zeros((m,1))
+
+x0 = np.zeros((K,1))
+x0[char_to_ind['.']] = 1
+
+Y = Synthesize(best_RNN, h0, x0, 1000, rng)
+best_text = OneHotToStr(Y, ind_to_char)
+
+# print synthesized text
+print("synthesized text from best model: ")
+print(best_text)
+print("------------------------------------------")
+print("Best smooth loss:", best_loss)
+
+# save synthesized text to file
+synth_file = open("best_synth.txt", "w")
+synth_file.write("Best smooth loss: " + str(best_loss) + "\n\n")
+synth_file.write(best_text)
+synth_file.close()
