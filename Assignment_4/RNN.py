@@ -266,6 +266,8 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
 
     rng = np.random.default_rng(seed)
 
+    synth_file = open("synth_evol.txt", "w")
+
     for t in range(1, n_updates+1):
 
         # if finished 1 epoch = 1 run through whole book_data
@@ -279,13 +281,21 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
         X = StrToOneHot(X_chars, char_to_ind, K)
         Y = StrToOneHot(Y_chars, char_to_ind, K)
 
+        # print and save synthesized text regularly
         if t == 1 or t % 10000 == 0:
             x0 = X[:, 0:1]
             Y_sample = Synthesize(RNN, hprev, x0, 200, rng)
+            synth_txt = OneHotToStr(Y_sample, ind_to_char)
 
-            print("synthesized text at update", t, ": ")
-            print(OneHotToStr(Y_sample, ind_to_char))
-            print("------------------------------------------")
+            if smooth_loss is None:
+                loss_text = "None"
+            else:
+                loss_text = str(smooth_loss)
+
+            synth_file.write("Before update " + str(t) + "\n")
+            synth_file.write("Smooth loss: " + loss_text + "\n")
+            synth_file.write(synth_txt + "\n")
+            synth_file.write("------------------------------------------\n\n")
 
 
         loss, fp = ForwardPass(X, Y, RNN, hprev)
@@ -310,4 +320,5 @@ def TrainRNN(book_data, char_to_ind, ind_to_char, RNN, eta, seq_length, n_update
         if t % 100 == 0:
             print("update:", t, "smooth loss:", smooth_loss)
 
+    synth_file.close()
     return RNN, best_RNN, smooth_losses, best_loss

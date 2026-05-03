@@ -66,20 +66,28 @@ RNN, best_RNN, smooth_losses, best_loss = TrainRNN(
     n_updates)
 
 
-PlotSmoothLoss(smooth_losses, 'smooth_loss')
+PlotSmoothLoss(smooth_losses, 'smooth_loss.png')
 
 # --------------- Synthesize text from best model -----------------
  
 rng = np.random.default_rng(seed=42)
 
-h0 = np.zeros(m,1)
+h0 = np.zeros((m,1))
 
 x0 = np.zeros((K,1))
 x0[char_to_ind['.']] = 1
 
-Y = Synthesize(RNN, h0, x0, 1000, rng)
+Y = Synthesize(best_RNN, h0, x0, 1000, rng)
+best_text = OneHotToStr(Y, ind_to_char)
 
+# print synthesized text
 print("synthesized text from best model: ")
-print(OneHotToStr(Y, ind_to_char))
+print(best_text)
 print("------------------------------------------")
 print("Best smooth loss:", best_loss)
+
+# save synthesized text to file
+synth_file = open("best_synth.txt", "w")
+synth_file.write("Best smooth loss: " + str(best_loss) + "\n\n")
+synth_file.write(best_text)
+synth_file.close()
